@@ -18,8 +18,10 @@ include(
     ":core:model",
     ":core:protocol",
     ":core:session",
-    ":platform:bluetooth",
+    ":core:trace",
     ":platform:sensors",
+    ":transports:android-hid",
+    ":transports:esp32-ble",
     ":feature:controller",
     ":shared",
 )
