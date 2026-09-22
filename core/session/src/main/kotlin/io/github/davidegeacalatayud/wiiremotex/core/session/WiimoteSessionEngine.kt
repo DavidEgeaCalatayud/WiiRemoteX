@@ -44,8 +44,19 @@ class WiimoteSessionEngine(
     }
 
     fun setMotion(motion: MotionState): SessionResult {
-        state = state.copy(motion = motion)
-        return withCurrentDataReport()
+        state = state.copy(
+            motion = motion,
+            nunchuk = if (state.nunchuk.connected) {
+                state.nunchuk.copy(
+                    accelerationX = motion.accelerationX,
+                    accelerationY = motion.accelerationY,
+                    accelerationZ = motion.accelerationZ,
+                )
+            } else {
+                state.nunchuk
+            },
+        )
+        return withCurrentDataReportIf(reportModeIncludesMotion(state.reportMode))
     }
 
     fun setInfrared(
@@ -58,17 +69,17 @@ class WiimoteSessionEngine(
                 points = points,
             ),
         )
-        return withCurrentDataReport()
+        return withCurrentDataReportIf(reportModeIncludesIr(state.reportMode))
     }
 
     fun setNunchuk(nunchuk: NunchukState): SessionResult {
         state = state.copy(nunchuk = nunchuk)
-        return withCurrentDataReport()
+        return withCurrentDataReportIf(reportModeIncludesExtension(state.reportMode))
     }
 
     fun setMotionPlus(motionPlus: MotionPlusState): SessionResult {
         state = state.copy(motionPlus = motionPlus)
-        return withCurrentDataReport()
+        return withCurrentDataReportIf(reportModeIncludesExtension(state.reportMode))
     }
 
     fun setBatteryLevel(level: Int): WiimoteState {
@@ -199,4 +210,20 @@ class WiimoteSessionEngine(
                 WiimoteEffect.SendReport(dataEncoder.encode(state)),
             ),
         )
+
+    private fun withCurrentDataReportIf(condition: Boolean): SessionResult =
+        if (condition) {
+            withCurrentDataReport()
+        } else {
+            SessionResult(state = state)
+        }
+
+    private fun reportModeIncludesMotion(mode: Int): Boolean =
+        mode in setOf(0x31, 0x33, 0x35, 0x37, 0x3E, 0x3F)
+
+    private fun reportModeIncludesIr(mode: Int): Boolean =
+        mode in setOf(0x33, 0x36, 0x37, 0x3E, 0x3F)
+
+    private fun reportModeIncludesExtension(mode: Int): Boolean =
+        mode in setOf(0x32, 0x34, 0x35, 0x36, 0x37, 0x3D)
 }
