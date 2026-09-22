@@ -2,45 +2,90 @@
 
 ## Objective
 
-WiiRemoteX is a hardware-emulation system with one Wii protocol engine and replaceable transports/frontends.
+WiiRemoteX is a hardware-emulation system with **one Wii Remote state/protocol engine** and replaceable transports.
 
 ```text
-Android frontend                       iOS frontend
-Compose + Android sensors              SwiftUI + CoreMotion
-        |                                      |
-        +---------------+  +-------------------+
-                        v  v
-                  shared Wii core
-       model -> protocol -> WiimoteSessionEngine
-                        |
-                 Wii HID reports
-                        |
-          +-------------+---------------+
-          |                             |
- AndroidHidTransport             iOS BLE transport
- BluetoothHidDevice                     |
-          |                       ESP32 bridge
-          |                    BLE <-> Classic HID
-          +-------------+---------------+
-                        |
-                    Nintendo Wii
+Android frontend                         iOS frontend
+Compose + Android sensors                SwiftUI + CoreMotion
+        |                                        |
+        +----------------+  +--------------------+
+                         v  v
+              Kotlin Multiplatform core
+        model -> protocol -> WiimoteSessionEngine
+                         |
+                  Wii HID reports
+                         |
+           +-------------+----------------------+
+           |                                    |
+     Android direct                         ESP32 bridge
+ AndroidHidTransport                Android BLE / iPhone BLE
+ BluetoothHidDevice                           |
+           |                          Bluetooth Classic HID
+           +------------------+-----------------+
+                              |
+                         Nintendo Wii
 ```
 
-The Wii protocol core must never depend on `android.*`, Swift/UIKit or ESP-IDF.
+The protocol core has no dependency on `android.*`, Swift/UIKit/CoreBluetooth, or ESP-IDF.
 
-## Source of truth
+## Real Kotlin Multiplatform core
 
-The existing Kotlin sources under:
+The protocol source of truth is physically organized as multiplatform source sets:
 
-- `:core:model`
-- `:core:protocol`
-- `:core:session`
+```text
+core/
+├── model/
+│   └── src/commonMain
+├── protocol/
+│   ├── src/commonMain
+│   └── src/commonTest
+├── session/
+│   ├── src/commonMain
+│   └── src/commonTest
+└── trace/
+    └── src/commonMain
+```
 
-remain the protocol source of truth.
+Each core module declares JVM and iOS targets. `:shared` no longer compiles another module's source directories by path; it depends on the core modules normally and only supplies the Swift-friendly facade.
 
-The `:shared` Kotlin Multiplatform module compiles those same source directories for JVM and iOS and adds platform-neutral bridge/facade code. Android therefore does not use a second implementation, and iOS does not reimplement report encoding in Swift.
+```text
+shared
+  ├── depends on core:model
+  ├── depends on core:protocol
+  └── depends on core:session
+```
 
-## Android path
+This guarantees that Android and iOS execute the same `WiimoteSessionEngine`, report encoders, register/EEPROM implementation, Nunchuk/MotionPlus logic and bridge framing.
+
+## Transport contract
+
+The session layer emits `HidInputReport` through:
+
+```kotlin
+fun interface HidTransport {
+    fun send(report: HidInputReport): Boolean
+}
+```
+
+Android selects one implementation at runtime:
+
+```text
+TransportMode
+├── DIRECT_ANDROID_HID
+│      └── AndroidHidTransport
+│             └── BluetoothHidDevice
+│                    └── Wii
+└── ESP32_BRIDGE
+       └── AndroidEsp32BleTransport
+              └── BLE
+                    └── ESP32
+                          └── Bluetooth Classic HID
+                                └── Wii
+```
+
+Changing transport does not recreate or replace the Wii protocol implementation.
+
+## Android direct path
 
 ```text
 Compose / Android sensors
@@ -56,7 +101,41 @@ BluetoothHidDevice
 Nintendo Wii
 ```
 
-Android remains the shortest transport path.
+This is the shortest path and remains the preferred option when the Android Bluetooth stack is compatible with the Wii.
+
+## Android ESP32 fallback
+
+```text
+Compose / Android sensors
+        |
+WiimoteSessionEngine
+        |
+HidInputReport
+        |
+BridgeFrameCodec
+        |
+AndroidEsp32BleTransport
+        |
+BLE GATT
+        |
+ESP32
+        |
+Bluetooth Classic HID
+        |
+Nintendo Wii
+```
+
+The fallback exists for devices/vendors where Android's public `BluetoothHidDevice` API cannot reproduce enough of the Wii Remote Bluetooth identity/handshake.
+
+The Android BLE transport:
+
+- scans by the WiiRemoteX service UUID
+- discovers the two bridge characteristics
+- enables GATT indications
+- keeps an ordered TX queue with bounded retries
+- fragments/reassembles with the same `BridgeFrameCodec` used by iOS
+- forwards Wii `OUTPUT_REPORT` traffic into the existing `WiimoteSessionEngine`
+- exposes bridge protocol version, firmware version, errors and Wii connection state
 
 ## iOS path
 
@@ -67,7 +146,7 @@ WiiRemoteShared.framework
         |
 IosWiimoteEngine
         |
-20-byte-safe bridge frames
+BridgeFrameCodec
         |
 CoreBluetooth
         |
@@ -80,13 +159,14 @@ Nintendo Wii
 
 The ESP32 is deliberately thin. It performs transport duties only:
 
-- reassemble BLE frames from iPhone
+- reassemble BLE frames from Android/iPhone
 - forward Wii input reports over Classic HID
-- forward Wii output reports back over BLE
+- forward Wii output reports back using confirmed GATT indications
 - expose pairing/bond controls
+- expose protocol + firmware version
 - report Wii connection state
 
-IR, Nunchuk, MotionPlus, EEPROM/register behavior, report modes and Wii state stay in the shared engine.
+IR, Nunchuk, MotionPlus, EEPROM/register behavior, report modes and Wii state remain in the phone-side shared engine.
 
 ## Bridge protocol
 
@@ -102,6 +182,8 @@ byte 5  fragment count
 byte 6+ payload (max 14 bytes)
 ```
 
+Messages are capped at 256 bytes and use a bounded reassembler.
+
 Message types:
 
 - `0x01 INPUT_REPORT`: phone -> ESP32 -> Wii
@@ -109,17 +191,40 @@ Message types:
 - `0x03 STATUS`: bridge/Wii lifecycle
 - `0x04 CONTROL`: pairing/bond operations
 
-The payload of INPUT_REPORT/OUTPUT_REPORT begins with the Wii HID report ID followed by its payload.
+`BRIDGE_READY` currently contains:
 
-## Button A path
+```text
+status_code
+protocol_version
+firmware_major
+firmware_minor
+firmware_patch
+```
 
-Android:
+The payload of `INPUT_REPORT` / `OUTPUT_REPORT` begins with the Wii HID report ID followed by its payload.
+
+## Button A paths
+
+Direct Android:
 
 ```text
 touch down
  -> WiimoteSessionEngine.setButton(A, true)
  -> report 0x30 / payload 00 08
- -> Android Bluetooth HID
+ -> AndroidHidTransport
+ -> Wii
+```
+
+Android fallback:
+
+```text
+touch down
+ -> same WiimoteSessionEngine
+ -> report 0x30 / payload 00 08
+ -> BridgeFrameCodec
+ -> Android BLE
+ -> ESP32
+ -> Classic HID
  -> Wii
 ```
 
@@ -130,47 +235,54 @@ touch down
  -> IosWiimoteEngine.buttonChanged("A", true)
  -> same WiimoteSessionEngine
  -> report 0x30 / payload 00 08
- -> bridge INPUT_REPORT frames
+ -> BridgeFrameCodec
  -> CoreBluetooth
  -> ESP32
- -> Classic HID report 0x30 / payload 00 08
+ -> Classic HID
  -> Wii
 ```
 
 ## Host/output path
 
-Android:
+Direct Android:
 
 ```text
 Wii -> Android HID callback -> HostCommandDecoder -> WiimoteSessionEngine
 ```
 
-iOS:
+Android/iOS bridge:
 
 ```text
 Wii
  -> ESP32 ESP_HIDD_OUTPUT_EVENT
  -> bridge OUTPUT_REPORT
- -> CoreBluetooth notification
- -> IosWiimoteEngine.acceptBridgePacket()
+ -> GATT indication
+ -> phone BridgeFrameReassembler
  -> HostCommandDecoder
  -> WiimoteSessionEngine
 ```
 
-Responses generated by the session engine travel back through the inverse path.
+Responses generated by the session engine travel back through the inverse transport.
 
-## Transport implementations
+## Transport modules
 
 ```text
-Wii report transport
-  +-- AndroidHidTransport       implemented
-  +-- IosEsp32Transport         implemented foundation
-  +-- Esp32ClassicHidTransport  implemented foundation
-  +-- NativeBluezTransport      planned laboratory transport
+transports/
+├── android-hid/   implemented
+├── esp32-ble/     implemented for Android
+└── linux-bluez/   deferred
 ```
+
+The native iOS CoreBluetooth adapter currently remains inside `iosApp`, while the protocol/framing it uses is in `:core:protocol`.
 
 ## Validation philosophy
 
-Protocol correctness and transport correctness are separate gates. Unit tests prove state/report behavior; KMP CI proves the shared engine compiles for iOS; ESP-IDF CI proves the bridge firmware builds; hardware captures prove actual Bluetooth behavior.
+Protocol correctness and transport correctness are independent gates:
 
-A physical Wii remains the final compatibility authority.
+- common/JVM tests validate reports and state transitions
+- Kotlin/Native CI validates the same core for iOS
+- Android CI validates both Android transports compile into the app
+- ESP-IDF CI validates the bridge and publishes flashable firmware artifacts
+- physical-Wii traces remain the final Bluetooth/game compatibility authority
+
+`LinuxBluezTransport` is intentionally deferred until after the mobile hardware gate.
