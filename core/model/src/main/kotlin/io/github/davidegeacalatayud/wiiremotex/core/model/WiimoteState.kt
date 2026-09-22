@@ -1,6 +1,8 @@
 package io.github.davidegeacalatayud.wiiremotex.core.model
 
-enum class WiiButton { A, B, ONE, TWO, PLUS, MINUS, HOME, UP, DOWN, LEFT, RIGHT }
+enum class WiiButton {
+    A, B, ONE, TWO, PLUS, MINUS, HOME, UP, DOWN, LEFT, RIGHT
+}
 
 data class PlayerLeds(
     val one: Boolean = false,
@@ -18,6 +20,46 @@ data class PlayerLeds(
     }
 }
 
+data class MotionState(
+    val accelerationX: Int = 512,
+    val accelerationY: Int = 512,
+    val accelerationZ: Int = 640,
+    val gyroYaw: Int = 0x1F7F,
+    val gyroRoll: Int = 0x1F7F,
+    val gyroPitch: Int = 0x1F7F,
+)
+
+data class InfraredPoint(
+    val x: Int = 0,
+    val y: Int = 0,
+    val size: Int = 5,
+    val visible: Boolean = false,
+)
+
+data class InfraredState(
+    val enabled: Boolean = false,
+    val points: List<InfraredPoint> = List(4) { InfraredPoint() },
+)
+
+data class NunchukState(
+    val connected: Boolean = false,
+    val stickX: Int = 128,
+    val stickY: Int = 128,
+    val accelerationX: Int = 512,
+    val accelerationY: Int = 512,
+    val accelerationZ: Int = 640,
+    val cPressed: Boolean = false,
+    val zPressed: Boolean = false,
+)
+
+data class MotionPlusState(
+    val enabled: Boolean = false,
+    val yawSlow: Boolean = true,
+    val rollSlow: Boolean = true,
+    val pitchSlow: Boolean = true,
+    val extensionConnected: Boolean = false,
+)
+
 data class WiimoteState(
     val pressedButtons: Set<WiiButton> = emptySet(),
     val leds: PlayerLeds = PlayerLeds(),
@@ -25,4 +67,8 @@ data class WiimoteState(
     val reportMode: Int = 0x30,
     val continuousReporting: Boolean = false,
     val batteryLevel: Int = 0xC0,
+    val motion: MotionState = MotionState(),
+    val infrared: InfraredState = InfraredState(),
+    val nunchuk: NunchukState = NunchukState(),
+    val motionPlus: MotionPlusState = MotionPlusState(),
 )
