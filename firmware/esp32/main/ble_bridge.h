@@ -16,7 +16,7 @@ void ble_bridge_init(
     ble_bridge_connection_callback_t connection_callback
 );
 
-bool ble_bridge_notify_packet(
+bool ble_bridge_send_packet(
     const uint8_t *packet,
     size_t packet_length
 );
