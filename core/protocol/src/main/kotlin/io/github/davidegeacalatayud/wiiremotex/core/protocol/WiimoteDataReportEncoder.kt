@@ -1,5 +1,6 @@
 package io.github.davidegeacalatayud.wiiremotex.core.protocol
 
+import io.github.davidegeacalatayud.wiiremotex.core.model.InfraredMode
 import io.github.davidegeacalatayud.wiiremotex.core.model.InfraredPoint
 import io.github.davidegeacalatayud.wiiremotex.core.model.NunchukState
 import io.github.davidegeacalatayud.wiiremotex.core.model.WiimoteState
@@ -54,7 +55,9 @@ class WiimoteDataReportEncoder(
             (state.motion.accelerationY.coerceIn(0, 1023) shr 2) and 0xFF
         }
 
-        val fullIr = encodeFullIr(state.infrared.points)
+        val fullIr = encodeFullIr(
+            infraredPointsForMode(state, InfraredMode.FULL),
+        )
         val irOffset = if (reportId == 0x3E) 0 else 18
 
         return HidInputReport(
@@ -86,7 +89,9 @@ class WiimoteDataReportEncoder(
         val base = encodeButtonsAndAccelerometer(state).payload
         return HidInputReport(
             reportId = 0x33,
-            payload = base + encodeExtendedIr(state.infrared.points),
+            payload = base + encodeExtendedIr(
+                infraredPointsForMode(state, InfraredMode.EXTENDED),
+            ),
         )
     }
 
@@ -123,7 +128,9 @@ class WiimoteDataReportEncoder(
         passThroughNunchukSample: Boolean,
     ): HidInputReport {
         val buttons = buttonsEncoder.encode(state).payload
-        val ir = encodeBasicIr(state.infrared.points)
+        val ir = encodeBasicIr(
+            infraredPointsForMode(state, InfraredMode.BASIC),
+        )
         val extension = encodeExtensionPayload(state, passThroughNunchukSample).copyOf(9)
         return HidInputReport(
             reportId = 0x36,
@@ -336,6 +343,20 @@ class WiimoteDataReportEncoder(
             (((pitch shr 8) and 0x3F) or 0x02).toByte(),
         )
     }
+
+    private fun infraredPointsForMode(
+        state: WiimoteState,
+        requiredMode: InfraredMode,
+    ): List<InfraredPoint> =
+        if (
+            state.infrared.enabled &&
+            state.infrared.configured &&
+            state.infrared.mode == requiredMode
+        ) {
+            state.infrared.points
+        } else {
+            List(4) { InfraredPoint() }
+        }
 
     private fun normalizePoints(points: List<InfraredPoint>): List<InfraredPoint> =
         List(4) { index -> points.getOrElse(index) { InfraredPoint() } }
