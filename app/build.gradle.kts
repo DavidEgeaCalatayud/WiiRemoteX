@@ -11,8 +11,8 @@ android {
         applicationId = "io.github.davidegeacalatayud.wiiremotex"
         minSdk = 28
         targetSdk = 36
-        versionCode = 5
-        versionName = "0.4.0-alpha"
+        versionCode = 6
+        versionName = "0.5.0-alpha"
     }
 
     buildFeatures {
@@ -24,7 +24,9 @@ dependencies {
     implementation(project(":core:model"))
     implementation(project(":core:session"))
     implementation(project(":core:protocol"))
-    implementation(project(":platform:bluetooth"))
+    implementation(project(":core:trace"))
+    implementation(project(":transports:android-hid"))
+    implementation(project(":transports:esp32-ble"))
     implementation(project(":platform:sensors"))
     implementation(project(":feature:controller"))
 
