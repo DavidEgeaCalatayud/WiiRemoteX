@@ -59,4 +59,12 @@ class WiiRemoteViewModel(
     fun setMotionPlusEnabled(enabled: Boolean) {
         runtime.setMotionPlusEnabled(enabled)
     }
+
+    fun setMotionPointerEnabled(enabled: Boolean) {
+        runtime.setMotionPointerEnabled(enabled)
+    }
+
+    fun recenterMotionPointer() {
+        runtime.recenterMotionPointer()
+    }
 }
