@@ -116,7 +116,24 @@ class MainActivity : ComponentActivity() {
             appendLine("Android: ${android.os.Build.VERSION.RELEASE} (API ${android.os.Build.VERSION.SDK_INT})")
             appendLine("HID stage: ${state.hidStage}")
             appendLine("Report mode: 0x${state.wiimote.reportMode.toString(16).uppercase().padStart(2, '0')}")
+            appendLine("Data reporting enabled: ${state.wiimote.dataReportingEnabled}")
             appendLine("Continuous reporting: ${state.wiimote.continuousReporting}")
+            appendLine(
+                "IR: enabled=${state.wiimote.infrared.enabled}, " +
+                    "configured=${state.wiimote.infrared.configured}, " +
+                    "mode=${state.wiimote.infrared.mode}",
+            )
+            appendLine(
+                "Nunchuk: connected=${state.wiimote.nunchuk.connected}, " +
+                    "initialized=${state.wiimote.nunchuk.initialized}, " +
+                    "plaintext=${state.wiimote.nunchuk.encryptionDisabled}",
+            )
+            appendLine(
+                "MotionPlus: present=${state.wiimote.motionPlus.present}, " +
+                    "initialized=${state.wiimote.motionPlus.initialized}, " +
+                    "active=${state.wiimote.motionPlus.active}, " +
+                    "passthrough=${state.wiimote.motionPlus.passThroughNunchuk}",
+            )
             appendLine("Rumble: ${state.wiimote.rumbleEnabled}")
             appendLine("Battery byte: 0x${state.wiimote.batteryLevel.toString(16).uppercase().padStart(2, '0')}")
             appendLine()
