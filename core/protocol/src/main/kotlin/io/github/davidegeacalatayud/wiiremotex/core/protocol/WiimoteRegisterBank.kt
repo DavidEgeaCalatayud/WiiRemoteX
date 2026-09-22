@@ -30,6 +30,7 @@ class WiimoteRegisterBank(
         NUNCHUK_ID.copyInto(extensionRegisters, destinationOffset = 0xFA)
         MOTION_PLUS_INACTIVE_ID.copyInto(motionPlusRegisters, destinationOffset = 0xFA)
         MOTION_PLUS_CALIBRATION.copyInto(motionPlusRegisters, destinationOffset = 0x20)
+        motionPlusRegisters[0xF7] = 0x02
     }
 
     @Synchronized
@@ -46,6 +47,7 @@ class WiimoteRegisterBank(
         motionPlusRegisters.fill(0)
         MOTION_PLUS_INACTIVE_ID.copyInto(motionPlusRegisters, destinationOffset = 0xFA)
         MOTION_PLUS_CALIBRATION.copyInto(motionPlusRegisters, destinationOffset = 0x20)
+        motionPlusRegisters[0xF7] = 0x02
     }
 
     @Synchronized
@@ -135,6 +137,7 @@ class WiimoteRegisterBank(
                         RegisterWriteResult(
                             success = true,
                             extensionInitialized = true,
+                            deactivateMotionPlus = state.motionPlus.active,
                         )
                     }
 
@@ -172,6 +175,7 @@ class WiimoteRegisterBank(
                     offset == MOTION_PLUS_INIT_REGISTER &&
                         data.firstOrNull()?.toInt()?.and(0xFF) == 0x55 -> {
                         motionPlusInitialized = true
+                        motionPlusRegisters[0xF7] = 0x0E
                         RegisterWriteResult(
                             success = true,
                             motionPlusInitialized = true,
@@ -179,6 +183,10 @@ class WiimoteRegisterBank(
                     }
 
                     offset == MOTION_PLUS_ACTIVATION_REGISTER && data.isNotEmpty() -> {
+                        if (!motionPlusInitialized) {
+                            return RegisterWriteResult(success = false)
+                        }
+
                         when (val mode = data[0].toInt() and 0xFF) {
                             0x04, 0x05, 0x07 -> RegisterWriteResult(
                                 success = true,
