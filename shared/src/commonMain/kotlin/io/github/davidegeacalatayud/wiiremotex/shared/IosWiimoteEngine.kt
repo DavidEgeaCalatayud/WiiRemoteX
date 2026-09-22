@@ -35,6 +35,25 @@ class IosWiimoteEngine(
     private var smoothedPointerX = 0.5f
     private var smoothedPointerY = 0.5f
 
+    var bridgeReady: Boolean = false
+        private set
+
+    var bridgeProtocolVersion: Int = 0
+        private set
+
+    var bridgeErrorCode: Int = 0
+        private set
+
+    val bridgeProtocolCompatible: Boolean
+        get() = bridgeReady && bridgeProtocolVersion == BridgeFrameCodec.VERSION
+
+    val bridgeProtocolStatusLabel: String
+        get() = when {
+            !bridgeReady -> "Waiting"
+            bridgeProtocolCompatible -> "Ready v$bridgeProtocolVersion"
+            else -> "Incompatible v$bridgeProtocolVersion"
+        }
+
     var wiiConnectionState: Int = WiiConnectionState.DISCONNECTED
         private set
 
@@ -360,6 +379,9 @@ class IosWiimoteEngine(
 
     fun resetBridgeSession() {
         reassembler.reset()
+        bridgeReady = false
+        bridgeProtocolVersion = 0
+        bridgeErrorCode = 0
         wiiConnectionState = WiiConnectionState.DISCONNECTED
     }
 
@@ -368,7 +390,23 @@ class IosWiimoteEngine(
 
         when (payload[0].toInt() and 0xFF) {
             BridgeStatusCode.WII_CONNECTION -> {
-                wiiConnectionState = payload[1].toInt() and 0xFF
+                val state = payload[1].toInt() and 0xFF
+                wiiConnectionState =
+                    if (state in WiiConnectionState.DISCONNECTED..WiiConnectionState.CONNECTED) {
+                        state
+                    } else {
+                        WiiConnectionState.DISCONNECTED
+                    }
+            }
+
+            BridgeStatusCode.BRIDGE_READY -> {
+                bridgeProtocolVersion = payload[1].toInt() and 0xFF
+                bridgeReady = true
+                bridgeErrorCode = 0
+            }
+
+            BridgeStatusCode.ERROR -> {
+                bridgeErrorCode = payload[1].toInt() and 0xFF
             }
         }
     }
