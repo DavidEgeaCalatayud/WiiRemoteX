@@ -21,7 +21,6 @@ class WiiRemoteForegroundService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action ?: ACTION_START_HID) {
             ACTION_STOP_HID -> {
-                runtime.stopHid()
                 stopForeground(STOP_FOREGROUND_REMOVE)
                 stopSelf()
                 return START_NOT_STICKY
@@ -82,11 +81,9 @@ class WiiRemoteForegroundService : Service() {
             .setContentIntent(contentIntent)
             .setOngoing(true)
             .addAction(
-                Notification.Action.Builder(
-                    null,
-                    "Stop",
-                    stopPendingIntent,
-                ).build(),
+                R.drawable.ic_wiiremote_notification,
+                "Stop",
+                stopPendingIntent,
             )
             .build()
     }
