@@ -1,0 +1,64 @@
+package io.github.davidegeacalatayud.wiiremotex.core.session
+
+import io.github.davidegeacalatayud.wiiremotex.core.model.WiiButton
+import io.github.davidegeacalatayud.wiiremotex.core.model.WiimoteState
+import io.github.davidegeacalatayud.wiiremotex.core.protocol.CoreButtonsReportEncoder
+import io.github.davidegeacalatayud.wiiremotex.core.protocol.HidInputReport
+import io.github.davidegeacalatayud.wiiremotex.core.protocol.HostCommand
+import io.github.davidegeacalatayud.wiiremotex.core.protocol.HostCommandDecoder
+
+sealed interface WiimoteEffect {
+    data class SendReport(val report: HidInputReport) : WiimoteEffect
+    data object SendStatusReport : WiimoteEffect
+}
+
+data class SessionResult(
+    val state: WiimoteState,
+    val effects: List<WiimoteEffect> = emptyList(),
+)
+
+class WiimoteSessionEngine(
+    initialState: WiimoteState = WiimoteState(),
+    private val encoder: CoreButtonsReportEncoder = CoreButtonsReportEncoder(),
+    private val decoder: HostCommandDecoder = HostCommandDecoder(),
+) {
+    var state: WiimoteState = initialState
+        private set
+
+    fun setButton(button: WiiButton, pressed: Boolean): SessionResult {
+        val buttons = state.pressedButtons.toMutableSet().apply {
+            if (pressed) add(button) else remove(button)
+        }
+        state = state.copy(pressedButtons = buttons)
+        return SessionResult(
+            state = state,
+            effects = listOf(WiimoteEffect.SendReport(encoder.encode(state))),
+        )
+    }
+
+    fun onHostReport(reportId: Int, payload: ByteArray): SessionResult {
+        val effects = when (val command = decoder.decode(reportId, payload)) {
+            is HostCommand.SetPlayerLeds -> {
+                state = state.copy(
+                    leds = command.leds,
+                    rumbleEnabled = command.rumbleEnabled,
+                )
+                emptyList()
+            }
+            is HostCommand.SetReportMode -> {
+                state = state.copy(
+                    reportMode = command.reportMode,
+                    continuousReporting = command.continuous,
+                    rumbleEnabled = command.rumbleEnabled,
+                )
+                emptyList()
+            }
+            is HostCommand.StatusRequest -> {
+                state = state.copy(rumbleEnabled = command.rumbleEnabled)
+                listOf(WiimoteEffect.SendStatusReport)
+            }
+            is HostCommand.Unknown -> emptyList()
+        }
+        return SessionResult(state = state, effects = effects)
+    }
+}
