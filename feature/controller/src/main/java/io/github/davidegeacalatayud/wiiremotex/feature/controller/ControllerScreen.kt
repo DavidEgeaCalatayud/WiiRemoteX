@@ -4,6 +4,7 @@ import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.waitForUpOrCancellation
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -36,6 +37,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import io.github.davidegeacalatayud.wiiremotex.core.model.ExtensionState
 import io.github.davidegeacalatayud.wiiremotex.core.model.ExtensionType
+import io.github.davidegeacalatayud.wiiremotex.core.model.PointerMode
 import io.github.davidegeacalatayud.wiiremotex.core.model.WiiButton
 import io.github.davidegeacalatayud.wiiremotex.core.model.WiimoteState
 import kotlin.math.roundToInt
@@ -47,10 +49,13 @@ fun ControllerScreen(
     diagnosticLines: List<String>,
     lastError: String?,
     pointerCalibrated: Boolean,
+    pointerMode: PointerMode,
     sensorAccelerometer: Boolean,
     sensorGyroscope: Boolean,
     sensorRotationVector: Boolean,
     onCalibratePointer: () -> Unit,
+    onPointerModeChanged: (PointerMode) -> Unit,
+    onTouchPointer: (Float, Float) -> Unit,
     onSelectExtension: (ExtensionType) -> Unit,
     onNunchukStick: (Int, Int) -> Unit,
     onNunchukCChanged: (Boolean) -> Unit,
@@ -124,10 +129,13 @@ fun ControllerScreen(
         AdvancedFeaturesCard(
             state = wiimoteState,
             pointerCalibrated = pointerCalibrated,
+            pointerMode = pointerMode,
             sensorAccelerometer = sensorAccelerometer,
             sensorGyroscope = sensorGyroscope,
             sensorRotationVector = sensorRotationVector,
             onCalibratePointer = onCalibratePointer,
+            onPointerModeChanged = onPointerModeChanged,
+            onTouchPointer = onTouchPointer,
             onSelectExtension = onSelectExtension,
             onNunchukStick = onNunchukStick,
             onNunchukCChanged = onNunchukCChanged,
@@ -199,10 +207,13 @@ private fun ConnectionCard(
 private fun AdvancedFeaturesCard(
     state: WiimoteState,
     pointerCalibrated: Boolean,
+    pointerMode: PointerMode,
     sensorAccelerometer: Boolean,
     sensorGyroscope: Boolean,
     sensorRotationVector: Boolean,
     onCalibratePointer: () -> Unit,
+    onPointerModeChanged: (PointerMode) -> Unit,
+    onTouchPointer: (Float, Float) -> Unit,
     onSelectExtension: (ExtensionType) -> Unit,
     onNunchukStick: (Int, Int) -> Unit,
     onNunchukCChanged: (Boolean) -> Unit,
@@ -245,11 +256,36 @@ private fun AdvancedFeaturesCard(
                 fontFamily = FontFamily.Monospace,
             )
 
-            Button(
-                onClick = onCalibratePointer,
-                enabled = sensorRotationVector,
+            Text(
+                text = "Pointer mode",
+                style = MaterialTheme.typography.labelLarge,
+            )
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                Text(if (pointerCalibrated) "Recalibrate IR center" else "Calibrate IR center")
+                Button(
+                    onClick = { onPointerModeChanged(PointerMode.MOTION) },
+                ) {
+                    Text(if (pointerMode == PointerMode.MOTION) "Motion ✓" else "Motion")
+                }
+                Button(
+                    onClick = { onPointerModeChanged(PointerMode.TOUCH) },
+                ) {
+                    Text(if (pointerMode == PointerMode.TOUCH) "Touch ✓" else "Touch")
+                }
+            }
+
+            if (pointerMode == PointerMode.MOTION) {
+                Button(
+                    onClick = onCalibratePointer,
+                    enabled = sensorRotationVector,
+                ) {
+                    Text(if (pointerCalibrated) "Recalibrate IR center" else "Calibrate IR center")
+                }
+            } else {
+                TouchPointerPad(onTouchPointer = onTouchPointer)
             }
 
             Text(
@@ -315,6 +351,52 @@ private fun AdvancedFeaturesCard(
             Text(
                 text = "The Wii selects the actual stream with report mode 0x31/0x33/0x35/0x37.",
                 style = MaterialTheme.typography.bodySmall,
+            )
+        }
+    }
+}
+
+@Composable
+private fun TouchPointerPad(
+    onTouchPointer: (Float, Float) -> Unit,
+) {
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(180.dp)
+            .pointerInput(onTouchPointer) {
+                awaitEachGesture {
+                    val down = awaitFirstDown(requireUnconsumed = false)
+
+                    fun emit(x: Float, y: Float) {
+                        if (size.width <= 0 || size.height <= 0) return
+                        onTouchPointer(
+                            (x / size.width).coerceIn(0f, 1f),
+                            (y / size.height).coerceIn(0f, 1f),
+                        )
+                    }
+
+                    emit(down.position.x, down.position.y)
+
+                    do {
+                        val event = awaitPointerEvent()
+                        val change = event.changes.firstOrNull { it.pressed }
+                        if (change != null) {
+                            emit(change.position.x, change.position.y)
+                            change.consume()
+                        }
+                    } while (event.changes.any { it.pressed })
+                }
+            },
+        shape = RoundedCornerShape(20.dp),
+        tonalElevation = 2.dp,
+    ) {
+        Box(
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(
+                text = "Touch / drag here to move the Wii pointer",
+                style = MaterialTheme.typography.bodyMedium,
             )
         }
     }
