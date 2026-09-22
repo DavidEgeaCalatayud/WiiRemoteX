@@ -28,6 +28,14 @@ class WiiRemoteViewModel(
         )
     }
 
+    fun recordDiscoverabilityRequested(durationSeconds: Int) {
+        runtime.recordDiscoverabilityRequested(durationSeconds)
+    }
+
+    fun recordDiscoverabilityResult(resultCode: Int) {
+        runtime.recordDiscoverabilityResult(resultCode)
+    }
+
     fun onButtonChanged(button: WiiButton, pressed: Boolean) {
         runtime.onButtonChanged(button, pressed)
     }
