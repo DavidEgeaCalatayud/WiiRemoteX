@@ -352,12 +352,13 @@ private fun MotionPlusCard(
             Column(modifier = Modifier.weight(1f)) {
                 Text("MotionPlus emulation", fontWeight = FontWeight.SemiBold)
                 Text(
-                    "Android gyroscope → six-byte MotionPlus payload.",
+                    "Present: ${state.motionPlus.present} · Active by Wii: ${state.motionPlus.active}\n" +
+                        "Android gyroscope → six-byte MotionPlus payload.",
                     style = MaterialTheme.typography.bodySmall,
                 )
             }
             Switch(
-                checked = state.motionPlus.enabled,
+                checked = state.motionPlus.present,
                 onCheckedChange = onEnabled,
             )
         }
