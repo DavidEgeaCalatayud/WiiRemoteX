@@ -19,5 +19,6 @@ include(
     ":core:protocol",
     ":core:session",
     ":platform:bluetooth",
+    ":platform:sensors",
     ":feature:controller",
 )
