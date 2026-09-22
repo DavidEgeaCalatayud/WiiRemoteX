@@ -132,6 +132,7 @@ class MainActivity : ComponentActivity() {
                 "MotionPlus: present=${state.wiimote.motionPlus.present}, " +
                     "initialized=${state.wiimote.motionPlus.initialized}, " +
                     "active=${state.wiimote.motionPlus.active}, " +
+                    "mode=0x${state.wiimote.motionPlus.activationMode.toString(16).uppercase()}, " +
                     "passthrough=${state.wiimote.motionPlus.passThroughNunchuk}",
             )
             appendLine("Rumble: ${state.wiimote.rumbleEnabled}")
