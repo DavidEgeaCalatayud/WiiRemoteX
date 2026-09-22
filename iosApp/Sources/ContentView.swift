@@ -46,9 +46,14 @@ struct ContentView: View {
                     }
                     .disabled(!model.canPairWii)
 
-                    Button("Clear Wii bond", role: .destructive) {
-                        model.clearWiiBond()
+                    Button("Stop pairing") {
+                        model.stopWiiPairing()
                     }
+                    .disabled(!model.canStopWiiPairing)
+                }
+
+                Button("Clear Wii bond", role: .destructive) {
+                    model.clearWiiBond()
                 }
 
                 Text("The iPhone runs the Wii protocol engine. The ESP32 only bridges BLE to Bluetooth Classic HID.")
