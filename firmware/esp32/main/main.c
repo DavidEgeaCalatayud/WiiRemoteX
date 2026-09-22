@@ -13,6 +13,10 @@
 
 static const char *TAG = "wiiremotex_bridge";
 
+#define WIIMOTEX_FW_VERSION_MAJOR 0
+#define WIIMOTEX_FW_VERSION_MINOR 6
+#define WIIMOTEX_FW_VERSION_PATCH 0
+
 static bridge_reassembler_t s_phone_reassembler;
 static uint16_t s_bridge_sequence;
 static bridge_wii_connection_state_t s_wii_state = BRIDGE_WII_DISCONNECTED;
@@ -60,6 +64,9 @@ static void send_bridge_ready(void) {
     const uint8_t payload[] = {
         BRIDGE_STATUS_READY,
         BRIDGE_PROTOCOL_VERSION,
+        WIIMOTEX_FW_VERSION_MAJOR,
+        WIIMOTEX_FW_VERSION_MINOR,
+        WIIMOTEX_FW_VERSION_PATCH,
     };
     send_bridge_message(BRIDGE_STATUS, payload, sizeof(payload));
 }
@@ -225,7 +232,13 @@ static void init_bluetooth_stack(void) {
 }
 
 void app_main(void) {
-    ESP_LOGI(TAG, "Starting WiiRemoteX ESP32 bridge");
+    ESP_LOGI(
+        TAG,
+        "Starting WiiRemoteX ESP32 bridge firmware %u.%u.%u",
+        WIIMOTEX_FW_VERSION_MAJOR,
+        WIIMOTEX_FW_VERSION_MINOR,
+        WIIMOTEX_FW_VERSION_PATCH
+    );
 
     init_nvs();
 
