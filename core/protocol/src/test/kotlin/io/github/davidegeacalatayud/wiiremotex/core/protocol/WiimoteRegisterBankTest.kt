@@ -77,10 +77,26 @@ class WiimoteRegisterBankTest {
 
     @Test
     fun `write 04 to A600FE activates MotionPlus`() {
+        val state = WiimoteState(
+            motionPlus = MotionPlusState(present = true),
+        )
+
+        val beforeInit = bank.write(
+            state = state,
+            address = 0xA600FE,
+            data = byteArrayOf(0x04),
+        )
+        assertEquals(false, beforeInit.success)
+
+        val init = bank.write(
+            state = state,
+            address = 0xA600F0,
+            data = byteArrayOf(0x55),
+        )
+        assertTrue(init.motionPlusInitialized)
+
         val result = bank.write(
-            state = WiimoteState(
-                motionPlus = MotionPlusState(present = true),
-            ),
+            state = state,
             address = 0xA600FE,
             data = byteArrayOf(0x04),
         )
@@ -147,6 +163,44 @@ class WiimoteRegisterBankTest {
         assertContentEquals(
             byteArrayOf(0x03),
             bank.read(enabledState, 0xB00033, 1),
+        )
+    }
+    @Test
+    fun `A400F0 deactivates active MotionPlus and initializes downstream extension`() {
+        val result = bank.write(
+            state = WiimoteState(
+                nunchuk = NunchukState(connected = true),
+                motionPlus = MotionPlusState(
+                    present = true,
+                    initialized = true,
+                    active = true,
+                ),
+            ),
+            address = 0xA400F0,
+            data = byteArrayOf(0x55),
+        )
+
+        assertTrue(result.success)
+        assertTrue(result.extensionInitialized)
+        assertTrue(result.deactivateMotionPlus)
+    }
+
+    @Test
+    fun `MotionPlus init progress register reaches 0x0E`() {
+        val state = WiimoteState(
+            motionPlus = MotionPlusState(present = true),
+        )
+
+        assertContentEquals(
+            byteArrayOf(0x02),
+            bank.read(state, 0xA600F7, 1),
+        )
+
+        bank.write(state, 0xA600F0, byteArrayOf(0x55))
+
+        assertContentEquals(
+            byteArrayOf(0x0E),
+            bank.read(state, 0xA600F7, 1),
         )
     }
 }
