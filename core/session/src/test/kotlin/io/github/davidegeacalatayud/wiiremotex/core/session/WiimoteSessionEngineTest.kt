@@ -40,4 +40,12 @@ class WiimoteSessionEngineTest {
         assertEquals(0x20, effect.report.reportId)
         assertEquals(6, effect.report.payload.size)
     }
+    @Test
+    fun `battery level is clamped to Wii byte range`() {
+        val engine = WiimoteSessionEngine()
+
+        assertEquals(0xFF, engine.setBatteryLevel(999).batteryLevel)
+        assertEquals(0x00, engine.setBatteryLevel(-1).batteryLevel)
+        assertEquals(0x80, engine.setBatteryLevel(0x80).batteryLevel)
+    }
 }
