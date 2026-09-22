@@ -553,6 +553,7 @@ class WiiRemoteRuntime(
             connectionState = _uiState.value.hidStage.name,
             state = session.state,
             reportId = reportId,
+            transport = selectedTransportMode.traceName,
         )
         log("HID", "GET_REPORT type=$type id=0x${reportId.hex2()} size=$bufferSize")
         return null
