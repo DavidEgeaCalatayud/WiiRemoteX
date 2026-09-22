@@ -357,15 +357,22 @@ class AndroidEsp32BleTransport(
         }
 
         if (!accepted) {
+            var retry = false
             synchronized(lock) {
                 writeInFlight = false
                 lastWrite = null
                 if (pending.retries < MAX_WRITE_RETRIES) {
                     pending.retries++
                     writeQueue.addFirst(pending)
+                    retry = true
                 }
             }
-            listener.onError("Android rejected a BLE bridge write")
+
+            if (retry) {
+                drainWrites()
+            } else {
+                listener.onError("Android rejected a BLE bridge write after retries")
+            }
         }
     }
 
