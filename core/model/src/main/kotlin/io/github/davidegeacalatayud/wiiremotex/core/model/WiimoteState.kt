@@ -36,13 +36,31 @@ data class InfraredPoint(
     val visible: Boolean = false,
 )
 
+enum class InfraredMode(val registerValue: Int) {
+    OFF(0),
+    BASIC(1),
+    EXTENDED(3),
+    FULL(5);
+
+    companion object {
+        fun fromRegisterValue(value: Int): InfraredMode =
+            entries.firstOrNull { it.registerValue == value } ?: OFF
+    }
+}
+
 data class InfraredState(
     val enabled: Boolean = false,
+    val pixelClockEnabled: Boolean = false,
+    val logicEnabled: Boolean = false,
+    val configured: Boolean = false,
+    val mode: InfraredMode = InfraredMode.OFF,
     val points: List<InfraredPoint> = List(4) { InfraredPoint() },
 )
 
 data class NunchukState(
     val connected: Boolean = false,
+    val initialized: Boolean = false,
+    val encryptionDisabled: Boolean = false,
     val stickX: Int = 128,
     val stickY: Int = 128,
     val accelerationX: Int = 512,
@@ -54,6 +72,7 @@ data class NunchukState(
 
 data class MotionPlusState(
     val present: Boolean = false,
+    val initialized: Boolean = false,
     val active: Boolean = false,
     val passThroughNunchuk: Boolean = false,
     val yawSlow: Boolean = true,
