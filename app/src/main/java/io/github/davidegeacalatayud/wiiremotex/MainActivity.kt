@@ -77,6 +77,9 @@ class MainActivity : ComponentActivity() {
                         onNunchukC = viewModel::setNunchukC,
                         onNunchukZ = viewModel::setNunchukZ,
                         onMotionPlusEnabled = viewModel::setMotionPlusEnabled,
+                        motionPointerEnabled = state.motionPointerEnabled,
+                        onMotionPointerEnabled = viewModel::setMotionPointerEnabled,
+                        onRecenterMotionPointer = viewModel::recenterMotionPointer,
                     )
                 }
             }
