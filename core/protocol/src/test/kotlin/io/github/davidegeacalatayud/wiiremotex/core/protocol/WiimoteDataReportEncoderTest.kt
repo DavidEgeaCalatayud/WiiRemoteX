@@ -10,6 +10,7 @@ import io.github.davidegeacalatayud.wiiremotex.core.model.WiimoteState
 import kotlin.test.Test
 import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
+import kotlin.test.assertTrue
 
 class WiimoteDataReportEncoderTest {
     private val encoder = WiimoteDataReportEncoder()
@@ -180,5 +181,49 @@ class WiimoteDataReportEncoderTest {
         assertEquals(0xFF, report.payload[5].toInt() and 0xFF)
         assertEquals(0xFF, report.payload[6].toInt() and 0xFF)
         assertEquals(0xFF, report.payload[7].toInt() and 0xFF)
+    }
+    @Test
+    fun `MotionPlus fast mode compresses raw angular delta`() {
+        val slow = encoder.encode(
+            WiimoteState(
+                reportMode = 0x32,
+                motion = MotionState(
+                    gyroYaw = 0x1F7F + 4000,
+                    gyroRoll = 0x1F7F,
+                    gyroPitch = 0x1F7F,
+                ),
+                motionPlus = MotionPlusState(
+                    present = true,
+                    active = true,
+                    yawSlow = true,
+                ),
+            ),
+        )
+
+        val fast = encoder.encode(
+            WiimoteState(
+                reportMode = 0x32,
+                motion = MotionState(
+                    gyroYaw = 0x1F7F + 4000,
+                    gyroRoll = 0x1F7F,
+                    gyroPitch = 0x1F7F,
+                ),
+                motionPlus = MotionPlusState(
+                    present = true,
+                    active = true,
+                    yawSlow = false,
+                ),
+            ),
+        )
+
+        val slowYaw = (slow.payload[2].toInt() and 0xFF) or
+            ((slow.payload[5].toInt() and 0xFC) shl 6)
+        val fastYaw = (fast.payload[2].toInt() and 0xFF) or
+            ((fast.payload[5].toInt() and 0xFC) shl 6)
+
+        assertTrue(
+            kotlin.math.abs(fastYaw - 0x1F7F) <
+                kotlin.math.abs(slowYaw - 0x1F7F),
+        )
     }
 }
