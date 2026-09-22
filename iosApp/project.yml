@@ -19,6 +19,8 @@ targets:
         PRODUCT_NAME: WiiRemoteX
         SWIFT_VERSION: "5.9"
         TARGETED_DEVICE_FAMILY: "1,2"
+        FRAMEWORK_SEARCH_PATHS: "$(inherited) $(SRCROOT)/../shared/build/xcode-frameworks/$(CONFIGURATION)/$(SDK_NAME)"
+        OTHER_LDFLAGS: "$(inherited) -framework WiiRemoteShared"
     preBuildScripts:
       - name: Compile Kotlin shared framework
         script: |
