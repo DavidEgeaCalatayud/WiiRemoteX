@@ -225,14 +225,7 @@ final class WiiRemoteViewModel: ObservableObject {
     private func refreshSharedState() {
         reportMode = String(format: "0x%02X", engine.reportMode)
 
-        switch engine.wiiConnectionState {
-        case Int32(WiiConnectionState.connected):
-            wiiState = "Connected"
-        case Int32(WiiConnectionState.connecting):
-            wiiState = "Connecting"
-        default:
-            wiiState = "Disconnected"
-        }
+        wiiState = engine.wiiConnectionStateLabel
 
         let rumble = engine.rumbleEnabled
         if rumble != previousRumble {
