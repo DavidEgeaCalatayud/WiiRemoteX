@@ -25,6 +25,7 @@ struct ContentView: View {
             VStack(alignment: .leading, spacing: 10) {
                 LabeledContent("iPhone ↔ ESP32", value: model.bridgeState)
                 LabeledContent("Bridge protocol", value: model.bridgeProtocolState)
+                LabeledContent("Firmware", value: model.bridgeFirmwareVersion)
                 LabeledContent("ESP32 ↔ Wii", value: model.wiiState)
                 LabeledContent("Report mode", value: model.reportMode)
 
