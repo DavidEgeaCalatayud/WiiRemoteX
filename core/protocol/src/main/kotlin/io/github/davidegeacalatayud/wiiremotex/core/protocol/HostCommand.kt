@@ -87,11 +87,10 @@ class HostCommandDecoder {
     ): HostCommand.WriteMemory {
         val address = payload.address24()
         val size = payload.getOrNull(4)?.toInt()?.and(0xFF)?.coerceIn(0, 16) ?: 0
-        val data = payload
-            .drop(5)
-            .take(size)
-            .map(Int::toByte)
-            .toByteArray()
+        val end = minOf(payload.size, 5 + size)
+        val data =
+            if (end > 5) payload.copyOfRange(5, end)
+            else byteArrayOf()
 
         return HostCommand.WriteMemory(
             registerSpace = common and 0x04 != 0,
