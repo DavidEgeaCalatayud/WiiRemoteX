@@ -203,4 +203,33 @@ class WiimoteRegisterBankTest {
             bank.read(state, 0xA600F7, 1),
         )
     }
+    @Test
+    fun `active MotionPlus identifier preserves passthrough mode byte`() {
+        val data = bank.read(
+            state = WiimoteState(
+                motionPlus = MotionPlusState(
+                    present = true,
+                    initialized = true,
+                    active = true,
+                    activationMode = 0x05,
+                    passThroughNunchuk = true,
+                ),
+            ),
+            address = 0xA400FA,
+            size = 6,
+        )
+
+        assertNotNull(data)
+        assertContentEquals(
+            byteArrayOf(
+                0x00,
+                0x00,
+                0xA4.toByte(),
+                0x20,
+                0x05,
+                0x05,
+            ),
+            data,
+        )
+    }
 }
