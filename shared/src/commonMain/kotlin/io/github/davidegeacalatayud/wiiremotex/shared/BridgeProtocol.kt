@@ -58,6 +58,9 @@ object BridgeFrameCodec {
      */
     const val MAX_PACKET_SIZE = 20
     const val MAX_FRAGMENT_PAYLOAD = MAX_PACKET_SIZE - HEADER_SIZE
+    const val MAX_MESSAGE_SIZE = 256
+    const val MAX_FRAGMENTS =
+        (MAX_MESSAGE_SIZE + MAX_FRAGMENT_PAYLOAD - 1) / MAX_FRAGMENT_PAYLOAD
 
     fun encode(
         type: BridgeMessageType,
@@ -65,10 +68,13 @@ object BridgeFrameCodec {
         payload: ByteArray,
     ): List<ByteArray> {
         require(sequence in 0..0xFFFF)
+        require(payload.size <= MAX_MESSAGE_SIZE) {
+            "Bridge payload exceeds $MAX_MESSAGE_SIZE bytes"
+        }
 
         val fragmentCount =
             maxOf(1, (payload.size + MAX_FRAGMENT_PAYLOAD - 1) / MAX_FRAGMENT_PAYLOAD)
-        require(fragmentCount <= 0xFF)
+        require(fragmentCount <= MAX_FRAGMENTS)
 
         return List(fragmentCount) { index ->
             val start = index * MAX_FRAGMENT_PAYLOAD
@@ -99,7 +105,11 @@ object BridgeFrameCodec {
         val fragmentIndex = packet[4].toInt() and 0xFF
         val fragmentCount = packet[5].toInt() and 0xFF
 
-        if (fragmentCount == 0 || fragmentIndex >= fragmentCount) return null
+        if (
+            fragmentCount == 0 ||
+            fragmentCount > MAX_FRAGMENTS ||
+            fragmentIndex >= fragmentCount
+        ) return null
         if (packet.size > MAX_PACKET_SIZE) return null
 
         return BridgeFragment(
@@ -120,7 +130,7 @@ class BridgeFrameReassembler {
     )
 
     private val lock = SynchronizedObject()
-    private val pending = mutableMapOf<Int, PendingMessage>()
+    private val pending = linkedMapOf<Int, PendingMessage>()
 
     fun accept(packet: ByteArray): BridgeMessage? = synchronized(lock) {
         val fragment = BridgeFrameCodec.decode(packet) ?: return@synchronized null
@@ -131,6 +141,13 @@ class BridgeFrameReassembler {
                 sequence = fragment.sequence,
                 payload = fragment.payload,
             )
+        }
+
+        if (
+            fragment.sequence !in pending &&
+            pending.size >= MAX_PENDING_MESSAGES
+        ) {
+            pending.keys.firstOrNull()?.let(pending::remove)
         }
 
         val message = pending.getOrPut(fragment.sequence) {
@@ -179,5 +196,9 @@ class BridgeFrameReassembler {
 
     fun reset() = synchronized(lock) {
         pending.clear()
+    }
+
+    private companion object {
+        const val MAX_PENDING_MESSAGES = 16
     }
 }
