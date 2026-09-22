@@ -7,6 +7,12 @@ import io.github.davidegeacalatayud.wiiremotex.core.model.MotionPlusState
 import io.github.davidegeacalatayud.wiiremotex.core.model.MotionState
 import io.github.davidegeacalatayud.wiiremotex.core.model.NunchukState
 import io.github.davidegeacalatayud.wiiremotex.core.model.WiiButton
+import io.github.davidegeacalatayud.wiiremotex.core.protocol.bridge.BridgeControlCode
+import io.github.davidegeacalatayud.wiiremotex.core.protocol.bridge.BridgeFrameCodec
+import io.github.davidegeacalatayud.wiiremotex.core.protocol.bridge.BridgeFrameReassembler
+import io.github.davidegeacalatayud.wiiremotex.core.protocol.bridge.BridgeMessageType
+import io.github.davidegeacalatayud.wiiremotex.core.protocol.bridge.BridgeStatusCode
+import io.github.davidegeacalatayud.wiiremotex.core.protocol.bridge.WiiConnectionState
 import io.github.davidegeacalatayud.wiiremotex.core.session.SessionResult
 import io.github.davidegeacalatayud.wiiremotex.core.session.WiimoteEffect
 import io.github.davidegeacalatayud.wiiremotex.core.session.WiimoteSessionEngine
