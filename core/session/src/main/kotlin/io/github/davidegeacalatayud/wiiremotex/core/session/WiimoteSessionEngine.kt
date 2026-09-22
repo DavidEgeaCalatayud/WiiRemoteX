@@ -79,6 +79,14 @@ class WiimoteSessionEngine(
             ),
         )
 
+    fun emitStatusReport(): SessionResult =
+        SessionResult(
+            state = state,
+            effects = listOf(
+                WiimoteEffect.SendReport(statusEncoder.encode(state)),
+            ),
+        )
+
     fun onHostReport(reportId: Int, payload: ByteArray): SessionResult {
         val effects = when (val command = decoder.decode(reportId, payload)) {
             is HostCommand.SetPlayerLeds -> {
