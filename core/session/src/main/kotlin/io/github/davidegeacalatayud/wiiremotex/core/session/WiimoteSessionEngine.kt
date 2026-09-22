@@ -43,7 +43,7 @@ class WiimoteSessionEngine(
             if (pressed) add(button) else remove(button)
         }
         state = state.copy(pressedButtons = buttons)
-        return withCurrentDataReport()
+        return withCurrentDataReportIf(!state.continuousReporting)
     }
 
     @Synchronized
@@ -60,7 +60,9 @@ class WiimoteSessionEngine(
                 state.nunchuk
             },
         )
-        return withCurrentDataReportIf(reportModeIncludesMotion(state.reportMode))
+        return withCurrentDataReportIf(
+            reportModeIncludesMotion(state.reportMode) && !state.continuousReporting,
+        )
     }
 
     @Synchronized
@@ -74,13 +76,17 @@ class WiimoteSessionEngine(
                 points = points,
             ),
         )
-        return withCurrentDataReportIf(reportModeIncludesIr(state.reportMode))
+        return withCurrentDataReportIf(
+            reportModeIncludesIr(state.reportMode) && !state.continuousReporting,
+        )
     }
 
     @Synchronized
     fun setNunchuk(nunchuk: NunchukState): SessionResult {
         state = state.copy(nunchuk = nunchuk)
-        return withCurrentDataReportIf(reportModeIncludesExtension(state.reportMode))
+        return withCurrentDataReportIf(
+            reportModeIncludesExtension(state.reportMode) && !state.continuousReporting,
+        )
     }
 
     @Synchronized
