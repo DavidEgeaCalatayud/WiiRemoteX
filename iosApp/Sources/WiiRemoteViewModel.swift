@@ -6,6 +6,8 @@ import WiiRemoteShared
 @MainActor
 final class WiiRemoteViewModel: ObservableObject {
     @Published private(set) var bridgeState = "Idle"
+    @Published private(set) var bridgeProtocolState = "Waiting"
+    @Published private(set) var canPairWii = false
     @Published private(set) var wiiState = "Disconnected"
     @Published private(set) var reportMode = "0x30"
     @Published private(set) var diagnostics: [String] = []
@@ -25,6 +27,7 @@ final class WiiRemoteViewModel: ObservableObject {
     private var cPressed = false
     private var zPressed = false
     private var previousRumble = false
+    private var previousBridgeErrorCode: Int32 = 0
 
     init() {
         bridge.onDiagnostic = { [weak self] message in
@@ -76,6 +79,11 @@ final class WiiRemoteViewModel: ObservableObject {
     }
 
     func startWiiPairing() {
+        guard engine.bridgeProtocolCompatible else {
+            appendDiagnostic("ESP32 bridge protocol is not ready")
+            return
+        }
+
         send(engine.startWiiPairingPackets())
         appendDiagnostic("Requested Wii pairing mode on ESP32")
     }
@@ -243,8 +251,19 @@ final class WiiRemoteViewModel: ObservableObject {
 
     private func refreshSharedState() {
         reportMode = String(format: "0x%02X", engine.reportMode)
-
+        bridgeProtocolState = engine.bridgeProtocolStatusLabel
+        canPairWii = engine.bridgeProtocolCompatible
         wiiState = engine.wiiConnectionStateLabel
+
+        let bridgeErrorCode = engine.bridgeErrorCode
+        if bridgeErrorCode != previousBridgeErrorCode {
+            previousBridgeErrorCode = bridgeErrorCode
+            if bridgeErrorCode != 0 {
+                appendDiagnostic(
+                    String(format: "ESP32 bridge error 0x%02X", bridgeErrorCode)
+                )
+            }
+        }
 
         let rumble = engine.rumbleEnabled
         if rumble != previousRumble {
