@@ -33,6 +33,7 @@ class WiimoteSessionEngine(
     private val decoder: HostCommandDecoder = HostCommandDecoder(),
 ) {
     private var nextInterleavedReportId: Int = 0x3E
+    private var nextPassThroughNunchukSample: Boolean = false
 
     var state: WiimoteState = initialState
         private set
@@ -92,7 +93,9 @@ class WiimoteSessionEngine(
     @Synchronized
     fun setMotionPlus(motionPlus: MotionPlusState): SessionResult {
         state = state.copy(motionPlus = motionPlus)
-        return withCurrentDataReportIf(reportModeIncludesExtension(state.reportMode))
+        return withCurrentDataReportIf(
+            reportModeIncludesExtension(state.reportMode) && !state.continuousReporting,
+        )
     }
 
     @Synchronized
@@ -163,6 +166,7 @@ class WiimoteSessionEngine(
                         motionPlus = state.motionPlus.copy(
                             present = true,
                             active = true,
+                            passThroughNunchuk = result.motionPlusMode == 0x05,
                             extensionConnected = state.nunchuk.connected,
                         ),
                     )
@@ -170,7 +174,10 @@ class WiimoteSessionEngine(
 
                 if (result.deactivateMotionPlus) {
                     state = state.copy(
-                        motionPlus = state.motionPlus.copy(active = false),
+                        motionPlus = state.motionPlus.copy(
+                            active = false,
+                            passThroughNunchuk = false,
+                        ),
                     )
                 }
 
@@ -252,7 +259,25 @@ class WiimoteSessionEngine(
             return dataEncoder.encodeInterleaved(state, reportId)
         }
 
-        return dataEncoder.encode(state)
+        val usePassThroughNunchuk =
+            state.motionPlus.active &&
+                state.motionPlus.passThroughNunchuk &&
+                state.nunchuk.connected &&
+                nextPassThroughNunchukSample
+
+        if (
+            state.motionPlus.active &&
+            state.motionPlus.passThroughNunchuk &&
+            state.nunchuk.connected &&
+            reportModeIncludesExtension(state.reportMode)
+        ) {
+            nextPassThroughNunchukSample = !nextPassThroughNunchukSample
+        }
+
+        return dataEncoder.encode(
+            state = state,
+            passThroughNunchukSample = usePassThroughNunchuk,
+        )
     }
 
     private fun withCurrentDataReportIf(condition: Boolean): SessionResult =
