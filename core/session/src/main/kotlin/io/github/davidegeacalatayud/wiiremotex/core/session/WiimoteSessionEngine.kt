@@ -84,7 +84,12 @@ class WiimoteSessionEngine(
 
     @Synchronized
     fun setNunchuk(nunchuk: NunchukState): SessionResult {
-        state = state.copy(nunchuk = nunchuk)
+        state = state.copy(
+            nunchuk = nunchuk,
+            motionPlus = state.motionPlus.copy(
+                extensionConnected = nunchuk.connected,
+            ),
+        )
         return withCurrentDataReportIf(
             reportModeIncludesExtension(state.reportMode) && !state.continuousReporting,
         )
@@ -181,15 +186,25 @@ class WiimoteSessionEngine(
                     )
                 }
 
-                listOf(
-                    WiimoteEffect.SendReport(
-                        memoryEncoder.encodeAck(
-                            state = state,
-                            outputReportId = 0x16,
-                            error = if (result.success) 0x00 else 0x08,
+                buildList {
+                    add(
+                        WiimoteEffect.SendReport(
+                            memoryEncoder.encodeAck(
+                                state = state,
+                                outputReportId = 0x16,
+                                error = if (result.success) 0x00 else 0x08,
+                            ),
                         ),
-                    ),
-                )
+                    )
+
+                    if (result.activateMotionPlus || result.deactivateMotionPlus) {
+                        add(
+                            WiimoteEffect.SendReport(
+                                statusEncoder.encode(state),
+                            ),
+                        )
+                    }
+                }
             }
 
             is HostCommand.ReadMemory -> {
