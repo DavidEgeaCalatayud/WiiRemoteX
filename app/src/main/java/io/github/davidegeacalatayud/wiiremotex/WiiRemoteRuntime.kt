@@ -8,6 +8,7 @@ import android.os.Build
 import android.os.VibrationEffect
 import android.os.Vibrator
 import android.os.VibratorManager
+import io.github.davidegeacalatayud.wiiremotex.core.model.InfraredMode
 import io.github.davidegeacalatayud.wiiremotex.core.model.InfraredPoint
 import io.github.davidegeacalatayud.wiiremotex.core.model.MotionPlusState
 import io.github.davidegeacalatayud.wiiremotex.core.model.NunchukState
@@ -171,9 +172,19 @@ class WiiRemoteRuntime(
 
     fun setIrEnabled(enabled: Boolean) {
         val current = session.state.infrared
+        val mode = if (enabled) {
+            irModeForReport(session.state.reportMode)
+        } else {
+            InfraredMode.OFF
+        }
+
         apply(
             session.setInfrared(
                 enabled = enabled,
+                pixelClockEnabled = enabled,
+                logicEnabled = enabled,
+                configured = enabled,
+                mode = mode,
                 points = current.points.map { point ->
                     point.copy(visible = enabled && point.visible)
                 },
@@ -195,8 +206,18 @@ class WiiRemoteRuntime(
             session.setNunchuk(
                 current.copy(
                     connected = true,
-                    stickX = (normalizedX.coerceIn(-1f, 1f) * 96f + 128f).toInt(),
-                    stickY = (normalizedY.coerceIn(-1f, 1f) * 96f + 128f).toInt(),
+                    stickX = mapNunchukAxis(
+                        normalizedX,
+                        NUNCHUK_X_MIN,
+                        NUNCHUK_CENTER,
+                        NUNCHUK_X_MAX,
+                    ),
+                    stickY = mapNunchukAxis(
+                        normalizedY,
+                        NUNCHUK_Y_MIN,
+                        NUNCHUK_CENTER,
+                        NUNCHUK_Y_MAX,
+                    ),
                 ),
             ),
         )
@@ -313,6 +334,27 @@ class WiiRemoteRuntime(
     ) {
         val detail = cause?.message ?: cause?.let { it::class.simpleName }
         fail(if (detail == null) message else "$message: $detail")
+    }
+
+    private fun irModeForReport(reportMode: Int): InfraredMode =
+        when (reportMode) {
+            0x36, 0x37 -> InfraredMode.BASIC
+            0x3E, 0x3F -> InfraredMode.FULL
+            else -> InfraredMode.EXTENDED
+        }
+
+    private fun mapNunchukAxis(
+        value: Float,
+        min: Int,
+        center: Int,
+        max: Int,
+    ): Int {
+        val normalized = value.coerceIn(-1f, 1f)
+        return if (normalized < 0f) {
+            (center + normalized * (center - min)).toInt()
+        } else {
+            (center + normalized * (max - center)).toInt()
+        }.coerceIn(min, max)
     }
 
     private fun startReportScheduler() {
@@ -477,6 +519,12 @@ class WiiRemoteRuntime(
     private companion object {
         const val MAX_LOG_LINES = 120
         const val CONTINUOUS_REPORT_INTERVAL_MS = 10L
+
+        const val NUNCHUK_CENTER = 128
+        const val NUNCHUK_X_MIN = 35
+        const val NUNCHUK_X_MAX = 228
+        const val NUNCHUK_Y_MIN = 27
+        const val NUNCHUK_Y_MAX = 220
 
         val HORIZONTAL_POINTER_RANGE_RAD: Float = Math.toRadians(60.0).toFloat()
         val VERTICAL_POINTER_RANGE_RAD: Float = Math.toRadians(45.0).toFloat()
