@@ -1,5 +1,6 @@
 package io.github.davidegeacalatayud.wiiremotex.core.session
 
+import io.github.davidegeacalatayud.wiiremotex.core.model.InfraredMode
 import io.github.davidegeacalatayud.wiiremotex.core.model.InfraredPoint
 import io.github.davidegeacalatayud.wiiremotex.core.model.InfraredState
 import io.github.davidegeacalatayud.wiiremotex.core.model.MotionPlusState
@@ -78,10 +79,18 @@ class WiimoteSessionEngine(
     fun setInfrared(
         enabled: Boolean = state.infrared.enabled,
         points: List<InfraredPoint> = state.infrared.points,
+        pixelClockEnabled: Boolean = state.infrared.pixelClockEnabled,
+        logicEnabled: Boolean = state.infrared.logicEnabled,
+        configured: Boolean = state.infrared.configured,
+        mode: InfraredMode = state.infrared.mode,
     ): SessionResult {
         state = state.copy(
             infrared = state.infrared.copy(
                 enabled = enabled,
+                pixelClockEnabled = pixelClockEnabled,
+                logicEnabled = logicEnabled,
+                configured = configured,
+                mode = mode,
                 points = points,
             ),
         )
@@ -92,22 +101,66 @@ class WiimoteSessionEngine(
 
     @Synchronized
     fun setNunchuk(nunchuk: NunchukState): SessionResult {
+        val connectionChanged = nunchuk.connected != state.nunchuk.connected
+        val normalized = if (nunchuk.connected) {
+            nunchuk
+        } else {
+            nunchuk.copy(
+                initialized = false,
+                encryptionDisabled = false,
+            )
+        }
+
+        if (connectionChanged) {
+            registerBank.resetExtension()
+        }
+
         state = state.copy(
-            nunchuk = nunchuk,
+            nunchuk = normalized,
             motionPlus = state.motionPlus.copy(
-                extensionConnected = nunchuk.connected,
+                extensionConnected = normalized.connected,
             ),
+            dataReportingEnabled =
+                if (connectionChanged) false else state.dataReportingEnabled,
         )
+
+        if (connectionChanged) {
+            return SessionResult(
+                state = state,
+                effects = listOf(
+                    WiimoteEffect.SendReport(statusEncoder.encode(state)),
+                ),
+            )
+        }
+
         return withCurrentDataReportIf(
-            reportModeIncludesExtension(state.reportMode) && !state.continuousReporting,
+            reportModeIncludesExtension(state.reportMode) &&
+                state.dataReportingEnabled &&
+                !state.continuousReporting,
         )
     }
 
     @Synchronized
     fun setMotionPlus(motionPlus: MotionPlusState): SessionResult {
-        state = state.copy(motionPlus = motionPlus)
+        if (!motionPlus.present && state.motionPlus.present) {
+            registerBank.resetMotionPlus()
+        }
+
+        val normalized = if (motionPlus.present) {
+            motionPlus
+        } else {
+            motionPlus.copy(
+                initialized = false,
+                active = false,
+                passThroughNunchuk = false,
+            )
+        }
+
+        state = state.copy(motionPlus = normalized)
         return withCurrentDataReportIf(
-            reportModeIncludesExtension(state.reportMode) && !state.continuousReporting,
+            reportModeIncludesExtension(state.reportMode) &&
+                state.dataReportingEnabled &&
+                !state.continuousReporting,
         )
     }
 
@@ -135,6 +188,7 @@ class WiimoteSessionEngine(
 
                 state = state.copy(
                     reportMode = command.reportMode,
+                    dataReportingEnabled = true,
                     continuousReporting = command.continuous,
                     rumbleEnabled = command.rumbleEnabled,
                 )
@@ -339,7 +393,7 @@ class WiimoteSessionEngine(
 
     @Synchronized
     fun nextContinuousReport(): SessionResult =
-        if (state.continuousReporting) {
+        if (state.dataReportingEnabled && state.continuousReporting) {
             SessionResult(
                 state = state,
                 effects = listOf(
@@ -388,7 +442,7 @@ class WiimoteSessionEngine(
     }
 
     private fun withCurrentDataReportIf(condition: Boolean): SessionResult =
-        if (condition) {
+        if (condition && state.dataReportingEnabled) {
             withCurrentDataReport()
         } else {
             SessionResult(state = state)
