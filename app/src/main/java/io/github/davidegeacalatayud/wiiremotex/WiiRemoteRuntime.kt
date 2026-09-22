@@ -8,12 +8,16 @@ import android.os.Build
 import android.os.VibrationEffect
 import android.os.Vibrator
 import android.os.VibratorManager
+import io.github.davidegeacalatayud.wiiremotex.core.model.InfraredPoint
+import io.github.davidegeacalatayud.wiiremotex.core.model.MotionPlusState
+import io.github.davidegeacalatayud.wiiremotex.core.model.NunchukState
 import io.github.davidegeacalatayud.wiiremotex.core.model.WiiButton
 import io.github.davidegeacalatayud.wiiremotex.core.model.WiimoteState
 import io.github.davidegeacalatayud.wiiremotex.core.session.SessionResult
 import io.github.davidegeacalatayud.wiiremotex.core.session.WiimoteEffect
 import io.github.davidegeacalatayud.wiiremotex.core.session.WiimoteSessionEngine
 import io.github.davidegeacalatayud.wiiremotex.platform.bluetooth.AndroidHidTransport
+import io.github.davidegeacalatayud.wiiremotex.platform.sensors.AndroidMotionSource
 import java.time.LocalTime
 import java.time.format.DateTimeFormatter
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -55,6 +59,10 @@ class WiiRemoteRuntime(
         listener = this,
     )
 
+    private val motionSource = AndroidMotionSource(application) { motion ->
+        apply(session.setMotion(motion))
+    }
+
     private val _uiState = MutableStateFlow(WiiRemoteUiState())
     val uiState: StateFlow<WiiRemoteUiState> = _uiState.asStateFlow()
 
@@ -71,6 +79,11 @@ class WiiRemoteRuntime(
         }
 
         updateBatteryFromSystem()
+        if (motionSource.start()) {
+            log("SYS", "Android accelerometer/gyroscope source started")
+        } else {
+            log("ERR", "No compatible Android motion sensors available")
+        }
         log("SYS", "Starting Android HID Device profile")
         _uiState.update {
             it.copy(
@@ -86,6 +99,7 @@ class WiiRemoteRuntime(
 
     fun stopHid() {
         setRumble(false)
+        motionSource.stop()
         transport.stop()
         log("SYS", "HID runtime stopped")
         _uiState.update {
@@ -99,6 +113,93 @@ class WiiRemoteRuntime(
 
     fun onButtonChanged(button: WiiButton, pressed: Boolean) {
         apply(session.setButton(button, pressed))
+    }
+
+    fun setIrPointer(normalizedX: Float, normalizedY: Float, enabled: Boolean = true) {
+        val x = (normalizedX.coerceIn(0f, 1f) * 1023f).toInt()
+        val y = (normalizedY.coerceIn(0f, 1f) * 767f).toInt()
+        val separation = 120
+        val points = listOf(
+            InfraredPoint(
+                x = (x - separation).coerceIn(0, 1023),
+                y = y,
+                size = 6,
+                visible = enabled,
+            ),
+            InfraredPoint(
+                x = (x + separation).coerceIn(0, 1023),
+                y = y,
+                size = 6,
+                visible = enabled,
+            ),
+            InfraredPoint(),
+            InfraredPoint(),
+        )
+
+        apply(
+            session.setInfrared(
+                enabled = enabled,
+                points = points,
+            ),
+        )
+    }
+
+    fun setIrEnabled(enabled: Boolean) {
+        val current = session.state.infrared
+        apply(
+            session.setInfrared(
+                enabled = enabled,
+                points = current.points.map { point ->
+                    point.copy(visible = enabled && point.visible)
+                },
+            ),
+        )
+    }
+
+    fun setNunchukEnabled(enabled: Boolean) {
+        apply(
+            session.setNunchuk(
+                session.state.nunchuk.copy(connected = enabled),
+            ),
+        )
+    }
+
+    fun setNunchukStick(normalizedX: Float, normalizedY: Float) {
+        val current = session.state.nunchuk
+        apply(
+            session.setNunchuk(
+                current.copy(
+                    connected = true,
+                    stickX = (normalizedX.coerceIn(-1f, 1f) * 96f + 128f).toInt(),
+                    stickY = (normalizedY.coerceIn(-1f, 1f) * 96f + 128f).toInt(),
+                ),
+            ),
+        )
+    }
+
+    fun setNunchukButton(cPressed: Boolean? = null, zPressed: Boolean? = null) {
+        val current = session.state.nunchuk
+        apply(
+            session.setNunchuk(
+                current.copy(
+                    connected = true,
+                    cPressed = cPressed ?: current.cPressed,
+                    zPressed = zPressed ?: current.zPressed,
+                ),
+            ),
+        )
+    }
+
+    fun setMotionPlusEnabled(enabled: Boolean) {
+        val current = session.state.motionPlus
+        apply(
+            session.setMotionPlus(
+                current.copy(
+                    enabled = enabled,
+                    extensionConnected = session.state.nunchuk.connected,
+                ),
+            ),
+        )
     }
 
     override fun onRegistrationChanged(registered: Boolean) {
