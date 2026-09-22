@@ -154,8 +154,11 @@ class BridgeFrameReassembler {
             return@synchronized null
         }
 
-        val totalSize = (0 until message.fragmentCount)
-            .sumOf { index -> message.fragments[index]?.size ?: return@synchronized null }
+        var totalSize = 0
+        for (index in 0 until message.fragmentCount) {
+            val part = message.fragments[index] ?: return@synchronized null
+            totalSize += part.size
+        }
 
         val payload = ByteArray(totalSize)
         var offset = 0
