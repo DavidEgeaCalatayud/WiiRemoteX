@@ -15,6 +15,10 @@ class WiiRemoteViewModel(
 
     val uiState: StateFlow<WiiRemoteUiState> = runtime.uiState
 
+    fun selectTransport(mode: TransportMode) {
+        runtime.selectTransport(mode)
+    }
+
     fun startHid() {
         val intent = Intent(app, WiiRemoteForegroundService::class.java).apply {
             action = WiiRemoteForegroundService.ACTION_START_HID
@@ -26,6 +30,18 @@ class WiiRemoteViewModel(
         app.stopService(
             Intent(app, WiiRemoteForegroundService::class.java),
         )
+    }
+
+    fun startWiiPairing() {
+        runtime.startWiiPairing()
+    }
+
+    fun stopWiiPairing() {
+        runtime.stopWiiPairing()
+    }
+
+    fun clearWiiBond() {
+        runtime.clearWiiBond()
     }
 
     fun recordDiscoverabilityRequested(durationSeconds: Int) {
