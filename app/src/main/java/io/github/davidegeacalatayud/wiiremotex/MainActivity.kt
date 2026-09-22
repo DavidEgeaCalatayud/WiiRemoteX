@@ -65,6 +65,7 @@ class MainActivity : ComponentActivity() {
                                 requestDiscoverable()
                             }
                         },
+                        onStopHid = viewModel::stopHid,
                         onButtonChanged = viewModel::onButtonChanged,
                     )
                 }
