@@ -271,10 +271,11 @@ class WiimoteDataReportEncoder(
             state.motionPlus.active &&
                 state.motionPlus.passThroughNunchuk &&
                 state.nunchuk.connected &&
+                state.nunchuk.initialized &&
                 passThroughNunchukSample -> encodeMotionPlusNunchukPassThrough(state.nunchuk)
 
             state.motionPlus.active -> encodeMotionPlus(state)
-            state.nunchuk.connected -> encodeNunchuk(state.nunchuk)
+            state.nunchuk.connected && state.nunchuk.initialized -> encodeNunchuk(state.nunchuk)
             else -> ByteArray(6)
         }
 
