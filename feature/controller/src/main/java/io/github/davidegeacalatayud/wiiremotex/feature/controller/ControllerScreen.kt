@@ -45,6 +45,7 @@ fun ControllerScreen(
     onStartHid: () -> Unit,
     onMakeDiscoverable: () -> Unit,
     onStopHid: () -> Unit,
+    onShareDiagnostics: () -> Unit,
     onButtonChanged: (WiiButton, Boolean) -> Unit,
 ) {
     Column(
@@ -107,7 +108,10 @@ fun ControllerScreen(
             RemoteButton("2", WiiButton.TWO, onButtonChanged, 54)
         }
 
-        DiagnosticsCard(diagnosticLines)
+        DiagnosticsCard(
+            lines = diagnosticLines,
+            onShareDiagnostics = onShareDiagnostics,
+        )
 
         Text(
             text = "Pointer · Motion · Nunchuk remain intentionally deferred until the real-Wii HID link works.",
@@ -180,7 +184,10 @@ private fun ConnectionCard(
 }
 
 @Composable
-private fun DiagnosticsCard(lines: List<String>) {
+private fun DiagnosticsCard(
+    lines: List<String>,
+    onShareDiagnostics: () -> Unit,
+) {
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(
             modifier = Modifier.padding(16.dp),
@@ -205,6 +212,10 @@ private fun DiagnosticsCard(lines: List<String>) {
                         fontFamily = FontFamily.Monospace,
                     )
                 }
+            }
+
+            Button(onClick = onShareDiagnostics) {
+                Text("Share diagnostics")
             }
         }
     }
