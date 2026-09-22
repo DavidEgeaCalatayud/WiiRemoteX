@@ -145,6 +145,18 @@ class WiiRemoteRuntime(
         }
     }
 
+    fun recordDiscoverabilityRequested(durationSeconds: Int) {
+        log("SYS", "Bluetooth discoverability requested for ${durationSeconds}s")
+    }
+
+    fun recordDiscoverabilityResult(resultCode: Int) {
+        if (resultCode > 0) {
+            log("SYS", "Bluetooth discoverability granted for ${resultCode}s")
+        } else {
+            log("SYS", "Bluetooth discoverability request canceled or denied")
+        }
+    }
+
     fun onButtonChanged(button: WiiButton, pressed: Boolean) {
         apply(session.setButton(button, pressed))
     }
