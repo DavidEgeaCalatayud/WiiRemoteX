@@ -1,6 +1,7 @@
 package io.github.davidegeacalatayud.wiiremotex.core.protocol
 
 import io.github.davidegeacalatayud.wiiremotex.core.model.ExtensionState
+import io.github.davidegeacalatayud.wiiremotex.core.model.MotionPlusMode
 import io.github.davidegeacalatayud.wiiremotex.core.model.MotionPlusState
 
 data class RegisterReadResult(
@@ -51,11 +52,19 @@ class ExtensionRegisterBank(
             }
 
             if (address == MOTION_PLUS_ACTIVATE_FE) {
-                val mode = data[0].toInt() and 0xFF
-                if (mode == 0x04 || mode == 0x05 || mode == 0x07) {
+                val activationByte = data[0].toInt() and 0xFF
+                val mode = MotionPlusMode.entries.firstOrNull {
+                    it.activationByte == activationByte
+                }
+
+                if (mode != null) {
                     return RegisterWriteResult(
                         extension.copy(
-                            value = extension.value.copy(active = true),
+                            value = extension.value.copy(
+                                active = true,
+                                mode = mode,
+                                reportMotionPlusNext = true,
+                            ),
                         ),
                     )
                 }
@@ -138,10 +147,12 @@ class ExtensionRegisterBank(
         if (state.active) {
             val a4Offset = address - EXTENSION_REGISTER_START
             if (a4Offset in 0x08..0x0D) {
-                return extensionCodec.encodeMotionPlus(state)[a4Offset - 0x08]
+                return extensionCodec.encode(
+                    ExtensionState.MotionPlus(state),
+                )[a4Offset - 0x08]
             }
             if (a4Offset in 0xFA..0xFF) {
-                return MOTION_PLUS_ACTIVE_ID[a4Offset - 0xFA]
+                return motionPlusActiveId(state.mode)[a4Offset - 0xFA]
             }
         }
 
@@ -152,7 +163,7 @@ class ExtensionRegisterBank(
 
             a6Offset in 0xFA..0xFF ->
                 if (state.active) {
-                    MOTION_PLUS_INACTIVE_AFTER_USE_ID[a6Offset - 0xFA]
+                    motionPlusInactiveAfterUseId(state.mode)[a6Offset - 0xFA]
                 } else {
                     MOTION_PLUS_INACTIVE_ID[a6Offset - 0xFA]
                 }
@@ -235,6 +246,27 @@ class ExtensionRegisterBank(
             0x04,
             0x05,
         )
+
+
+        fun motionPlusActiveId(mode: MotionPlusMode): ByteArray =
+            byteArrayOf(
+                0x00,
+                0x00,
+                0xA4.toByte(),
+                0x20,
+                mode.activationByte.toByte(),
+                0x05,
+            )
+
+        fun motionPlusInactiveAfterUseId(mode: MotionPlusMode): ByteArray =
+            byteArrayOf(
+                0x00,
+                0x00,
+                0xA6.toByte(),
+                0x20,
+                mode.activationByte.toByte(),
+                0x05,
+            )
 
         private val NUNCHUK_CALIBRATION = byteArrayOf(
             0xFF.toByte(), 0x00, 0x80.toByte(),
