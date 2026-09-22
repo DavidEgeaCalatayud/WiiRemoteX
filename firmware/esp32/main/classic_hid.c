@@ -81,6 +81,22 @@ static void hidd_event_callback(
         case ESP_HIDD_START_EVENT:
             if (param->start.status == ESP_OK) {
                 ESP_LOGI(TAG, "Classic HID ready");
+
+                // Match the observed RVL-CNT-01 Class of Device: 0x002504.
+                esp_bt_cod_t cod = {0};
+                cod.service = ESP_BT_COD_SRVC_LMTD_DISCOVER;
+                cod.major = ESP_BT_COD_MAJOR_DEV_PERIPHERAL;
+                cod.minor = ESP_BT_COD_MINOR_PERIPHERAL_JOYSTICK;
+                const esp_err_t cod_result =
+                    esp_bt_gap_set_cod(cod, ESP_BT_INIT_COD);
+                if (cod_result != ESP_OK) {
+                    ESP_LOGW(
+                        TAG,
+                        "Unable to set Wii Remote Class of Device: %s",
+                        esp_err_to_name(cod_result)
+                    );
+                }
+
                 classic_hid_set_pairing(true);
             } else {
                 ESP_LOGE(TAG, "Classic HID start failed: %d", param->start.status);
@@ -149,11 +165,6 @@ void classic_hid_init(
 
     ESP_ERROR_CHECK(esp_bt_gap_set_device_name(s_hid_config.device_name));
 
-    esp_bt_cod_t cod = {0};
-    cod.major = ESP_BT_COD_MAJOR_DEV_PERIPHERAL;
-    cod.minor = ESP_BT_COD_MINOR_PERIPHERAL_POINTING;
-    ESP_ERROR_CHECK(esp_bt_gap_set_cod(cod, ESP_BT_SET_COD_MAJOR_MINOR));
-
     ESP_ERROR_CHECK(
         esp_hidd_dev_init(
             &s_hid_config,
@@ -196,7 +207,7 @@ void classic_hid_set_pairing(bool enabled) {
     const esp_bt_connection_mode_t connection_mode =
         enabled ? ESP_BT_CONNECTABLE : ESP_BT_NON_CONNECTABLE;
     const esp_bt_discovery_mode_t discovery_mode =
-        enabled ? ESP_BT_GENERAL_DISCOVERABLE : ESP_BT_NON_DISCOVERABLE;
+        enabled ? ESP_BT_LIMITED_DISCOVERABLE : ESP_BT_NON_DISCOVERABLE;
 
     const esp_err_t result =
         esp_bt_gap_set_scan_mode(connection_mode, discovery_mode);
