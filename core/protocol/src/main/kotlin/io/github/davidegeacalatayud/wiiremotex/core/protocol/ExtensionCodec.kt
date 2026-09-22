@@ -11,7 +11,19 @@ class ExtensionCodec {
         when (extension) {
             ExtensionState.None -> ByteArray(6)
             is ExtensionState.Nunchuk -> encodeNunchuk(extension.value)
-            is ExtensionState.MotionPlus -> encodeMotionPlus(extension.value)
+            is ExtensionState.MotionPlus -> {
+                val state = extension.value
+                if (
+                    state.active &&
+                    state.mode == io.github.davidegeacalatayud.wiiremotex.core.model.MotionPlusMode.NUNCHUK_PASSTHROUGH &&
+                    state.passThroughNunchuk != null &&
+                    !state.reportMotionPlusNext
+                ) {
+                    encodeNunchukPassThrough(state.passThroughNunchuk)
+                } else {
+                    encodeMotionPlus(state)
+                }
+            }
         }
 
     fun encodeNunchuk(state: NunchukState): ByteArray {
@@ -37,6 +49,33 @@ class ExtensionCodec {
         )
     }
 
+    fun encodeNunchukPassThrough(state: NunchukState): ByteArray {
+        val ax = state.accelerationX.coerceIn(0, 1023)
+        val ay = state.accelerationY.coerceIn(0, 1023)
+        val az = state.accelerationZ.coerceIn(0, 1023)
+
+        val fifth =
+            ((((az shr 3) and 0x7F) shl 1) or 0x01)
+                .toByte()
+
+        var sixth =
+            (((az shr 1) and 0x03) shl 6) or
+                (((ay shr 1) and 0x01) shl 5) or
+                (((ax shr 1) and 0x01) shl 4)
+
+        if (!state.cPressed) sixth = sixth or 0x08
+        if (!state.zPressed) sixth = sixth or 0x04
+
+        return byteArrayOf(
+            state.stickX.coerceIn(0, 255).toByte(),
+            state.stickY.coerceIn(0, 255).toByte(),
+            (ax shr 2).toByte(),
+            (ay shr 2).toByte(),
+            fifth,
+            sixth.toByte(),
+        )
+    }
+
     fun encodeMotionPlus(state: MotionPlusState): ByteArray {
         val yaw = gyro(state.yawDegPerSec)
         val roll = gyro(state.rollDegPerSec)
@@ -54,7 +93,7 @@ class ExtensionCodec {
             (
                 (((roll.raw shr 8) and 0x3F) shl 2) or
                     (if (roll.slow) 0x02 else 0x00) or
-                    (if (state.extensionConnected) 0x01 else 0x00)
+                    (if (state.extensionConnected || state.passThroughNunchuk != null) 0x01 else 0x00)
                 ).toByte(),
             (
                 (((pitch.raw shr 8) and 0x3F) shl 2) or 0x02
