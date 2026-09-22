@@ -5,6 +5,7 @@ import io.github.davidegeacalatayud.wiiremotex.core.model.WiimoteState
 data class RegisterWriteResult(
     val success: Boolean,
     val activateMotionPlus: Boolean = false,
+    val motionPlusMode: Int? = null,
     val deactivateMotionPlus: Boolean = false,
 )
 
@@ -75,6 +76,7 @@ class WiimoteRegisterBank(
                 0x04, 0x05, 0x07 -> RegisterWriteResult(
                     success = true,
                     activateMotionPlus = true,
+                    motionPlusMode = data[0].toInt() and 0xFF,
                 )
 
                 else -> RegisterWriteResult(success = true)
