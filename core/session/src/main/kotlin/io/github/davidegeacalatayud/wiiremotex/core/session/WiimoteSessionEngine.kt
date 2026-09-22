@@ -10,7 +10,9 @@ import io.github.davidegeacalatayud.wiiremotex.core.model.WiimoteState
 import io.github.davidegeacalatayud.wiiremotex.core.protocol.HidInputReport
 import io.github.davidegeacalatayud.wiiremotex.core.protocol.HostCommand
 import io.github.davidegeacalatayud.wiiremotex.core.protocol.HostCommandDecoder
+import io.github.davidegeacalatayud.wiiremotex.core.protocol.MemoryReportEncoder
 import io.github.davidegeacalatayud.wiiremotex.core.protocol.StatusReportEncoder
+import io.github.davidegeacalatayud.wiiremotex.core.protocol.WiimoteRegisterBank
 import io.github.davidegeacalatayud.wiiremotex.core.protocol.WiimoteDataReportEncoder
 
 sealed interface WiimoteEffect {
@@ -26,6 +28,8 @@ class WiimoteSessionEngine(
     initialState: WiimoteState = WiimoteState(),
     private val dataEncoder: WiimoteDataReportEncoder = WiimoteDataReportEncoder(),
     private val statusEncoder: StatusReportEncoder = StatusReportEncoder(),
+    private val memoryEncoder: MemoryReportEncoder = MemoryReportEncoder(),
+    private val registerBank: WiimoteRegisterBank = WiimoteRegisterBank(),
     private val decoder: HostCommandDecoder = HostCommandDecoder(),
 ) {
     var state: WiimoteState = initialState
@@ -91,9 +95,95 @@ class WiimoteSessionEngine(
                 listOf(WiimoteEffect.SendReport(dataEncoder.encode(state)))
             }
 
+            is HostCommand.SetIrEnabled -> {
+                state = state.copy(
+                    infrared = state.infrared.copy(enabled = command.enabled),
+                    rumbleEnabled = command.rumbleEnabled,
+                )
+
+                if (command.acknowledge) {
+                    listOf(
+                        WiimoteEffect.SendReport(
+                            memoryEncoder.encodeAck(
+                                state = state,
+                                outputReportId = command.outputReportId,
+                            ),
+                        ),
+                    )
+                } else {
+                    emptyList()
+                }
+            }
+
             is HostCommand.StatusRequest -> {
                 state = state.copy(rumbleEnabled = command.rumbleEnabled)
                 listOf(WiimoteEffect.SendReport(statusEncoder.encode(state)))
+            }
+
+            is HostCommand.WriteMemory -> {
+                state = state.copy(rumbleEnabled = command.rumbleEnabled)
+                val result = registerBank.write(
+                    state = state,
+                    address = command.address,
+                    data = command.data,
+                )
+
+                if (result.activateMotionPlus) {
+                    state = state.copy(
+                        motionPlus = state.motionPlus.copy(
+                            enabled = true,
+                            extensionConnected = state.nunchuk.connected,
+                        ),
+                    )
+                }
+
+                if (result.deactivateMotionPlus) {
+                    state = state.copy(
+                        motionPlus = state.motionPlus.copy(enabled = false),
+                    )
+                }
+
+                listOf(
+                    WiimoteEffect.SendReport(
+                        memoryEncoder.encodeAck(
+                            state = state,
+                            outputReportId = 0x16,
+                            error = if (result.success) 0x00 else 0x08,
+                        ),
+                    ),
+                )
+            }
+
+            is HostCommand.ReadMemory -> {
+                state = state.copy(rumbleEnabled = command.rumbleEnabled)
+                val data = registerBank.read(
+                    state = state,
+                    address = command.address,
+                    size = command.size,
+                )
+
+                if (data == null) {
+                    listOf(
+                        WiimoteEffect.SendReport(
+                            memoryEncoder.encodeRead(
+                                state = state,
+                                address = command.address,
+                                data = byteArrayOf(0x00),
+                                error = 0x07,
+                            ),
+                        ),
+                    )
+                } else {
+                    listOf(
+                        WiimoteEffect.SendReport(
+                            memoryEncoder.encodeRead(
+                                state = state,
+                                address = command.address,
+                                data = data,
+                            ),
+                        ),
+                    )
+                }
             }
 
             is HostCommand.Unknown -> emptyList()
