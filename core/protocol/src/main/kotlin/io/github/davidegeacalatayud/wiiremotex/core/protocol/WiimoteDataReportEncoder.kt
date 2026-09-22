@@ -344,13 +344,13 @@ class WiimoteDataReportEncoder(
             (yaw and 0xFF).toByte(),
             (roll and 0xFF).toByte(),
             (pitch and 0xFF).toByte(),
-            (((yaw shr 8) and 0x3F) or
+            ((((yaw shr 8) and 0x3F) shl 2) or
                 (if (mp.yawSlow) 0x02 else 0x00) or
                 (if (mp.pitchSlow) 0x01 else 0x00)).toByte(),
-            (((roll shr 8) and 0x3F) or
+            ((((roll shr 8) and 0x3F) shl 2) or
                 (if (mp.rollSlow) 0x02 else 0x00) or
                 (if (mp.extensionConnected) 0x01 else 0x00)).toByte(),
-            (((pitch shr 8) and 0x3F) or 0x02).toByte(),
+            ((((pitch shr 8) and 0x3F) shl 2) or 0x02).toByte(),
         )
     }
 
