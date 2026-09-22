@@ -70,6 +70,13 @@ class MainActivity : ComponentActivity() {
                             shareDiagnostics(state)
                         },
                         onButtonChanged = viewModel::onButtonChanged,
+                        onIrPointer = viewModel::setIrPointer,
+                        onIrEnabled = viewModel::setIrEnabled,
+                        onNunchukEnabled = viewModel::setNunchukEnabled,
+                        onNunchukStick = viewModel::setNunchukStick,
+                        onNunchukC = viewModel::setNunchukC,
+                        onNunchukZ = viewModel::setNunchukZ,
+                        onMotionPlusEnabled = viewModel::setMotionPlusEnabled,
                     )
                 }
             }
