@@ -80,7 +80,7 @@ class WiimoteSessionEngine(
         points: List<InfraredPoint> = state.infrared.points,
     ): SessionResult {
         state = state.copy(
-            infrared = InfraredState(
+            infrared = state.infrared.copy(
                 enabled = enabled,
                 points = points,
             ),
@@ -142,8 +142,25 @@ class WiimoteSessionEngine(
             }
 
             is HostCommand.SetIrEnabled -> {
+                val currentIr = state.infrared
+                val updatedIr = when (command.outputReportId) {
+                    0x13 -> currentIr.copy(
+                        pixelClockEnabled = command.enabled,
+                    )
+
+                    0x1A -> currentIr.copy(
+                        logicEnabled = command.enabled,
+                    )
+
+                    else -> currentIr
+                }.let { ir ->
+                    ir.copy(
+                        enabled = ir.pixelClockEnabled && ir.logicEnabled,
+                    )
+                }
+
                 state = state.copy(
-                    infrared = state.infrared.copy(enabled = command.enabled),
+                    infrared = updatedIr,
                     rumbleEnabled = command.rumbleEnabled,
                 )
 
@@ -207,6 +224,36 @@ class WiimoteSessionEngine(
                             motionPlus = state.motionPlus.copy(
                                 active = false,
                                 passThroughNunchuk = false,
+                            ),
+                        )
+                    }
+
+                    if (result.motionPlusInitialized) {
+                        state = state.copy(
+                            motionPlus = state.motionPlus.copy(
+                                initialized = true,
+                            ),
+                        )
+                    }
+
+                    if (result.extensionInitialized || result.extensionEncryptionDisabled) {
+                        state = state.copy(
+                            nunchuk = state.nunchuk.copy(
+                                initialized =
+                                    state.nunchuk.initialized || result.extensionInitialized,
+                                encryptionDisabled =
+                                    state.nunchuk.encryptionDisabled ||
+                                        result.extensionEncryptionDisabled,
+                            ),
+                        )
+                    }
+
+                    if (result.infraredMode != null || result.infraredConfigured != null) {
+                        state = state.copy(
+                            infrared = state.infrared.copy(
+                                mode = result.infraredMode ?: state.infrared.mode,
+                                configured =
+                                    result.infraredConfigured ?: state.infrared.configured,
                             ),
                         )
                     }
