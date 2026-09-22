@@ -147,7 +147,10 @@ class BridgeFrameReassembler {
             fragment.sequence !in pending &&
             pending.size >= MAX_PENDING_MESSAGES
         ) {
-            pending.keys.firstOrNull()?.let(pending::remove)
+            val oldestSequence = pending.keys.firstOrNull()
+            if (oldestSequence != null) {
+                pending.remove(oldestSequence)
+            }
         }
 
         val message = pending.getOrPut(fragment.sequence) {
