@@ -5,7 +5,7 @@ plugins {
 
 android {
     namespace = "io.github.davidegeacalatayud.wiiremotex"
-    compileSdk = 37
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "io.github.davidegeacalatayud.wiiremotex"
