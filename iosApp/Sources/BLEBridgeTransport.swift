@@ -24,6 +24,8 @@ final class BLEBridgeTransport: NSObject, ObservableObject {
     private var peripheral: CBPeripheral?
     private var txCharacteristic: CBCharacteristic?
     private var rxCharacteristic: CBCharacteristic?
+    private var pendingWrites: [Data] = []
+    private var awaitingWriteResponse = false
 
     override init() {
         super.init()
@@ -54,6 +56,8 @@ final class BLEBridgeTransport: NSObject, ObservableObject {
         self.peripheral = nil
         txCharacteristic = nil
         rxCharacteristic = nil
+        pendingWrites.removeAll(keepingCapacity: true)
+        awaitingWriteResponse = false
         bridgeName = nil
 
         if centralManager?.state == .poweredOn {
@@ -62,19 +66,64 @@ final class BLEBridgeTransport: NSObject, ObservableObject {
     }
 
     func send(_ packet: Data) {
-        guard
-            packet.count <= 20,
-            let peripheral,
-            let txCharacteristic
-        else {
+        guard packet.count <= 20 else {
+            onDiagnostic?("BLE TX rejected: packet exceeds 20-byte bridge limit")
+            return
+        }
+
+        guard state == .connected, peripheral != nil, txCharacteristic != nil else {
             onDiagnostic?("BLE TX dropped: bridge is not ready")
             return
         }
 
-        let writeType: CBCharacteristicWriteType =
-            txCharacteristic.properties.contains(.writeWithoutResponse) ? .withoutResponse : .withResponse
+        guard pendingWrites.count < 1_024 else {
+            onDiagnostic?("BLE TX overrun: write queue reached 1024 packets")
+            return
+        }
 
-        peripheral.writeValue(packet, for: txCharacteristic, type: writeType)
+        pendingWrites.append(packet)
+        drainWrites()
+    }
+
+    private func drainWrites() {
+        guard
+            state == .connected,
+            let peripheral,
+            let txCharacteristic,
+            !pendingWrites.isEmpty
+        else {
+            return
+        }
+
+        if txCharacteristic.properties.contains(.writeWithoutResponse) {
+            while
+                !pendingWrites.isEmpty &&
+                peripheral.canSendWriteWithoutResponse
+            {
+                let packet = pendingWrites.removeFirst()
+                peripheral.writeValue(
+                    packet,
+                    for: txCharacteristic,
+                    type: .withoutResponse
+                )
+            }
+            return
+        }
+
+        guard
+            txCharacteristic.properties.contains(.write),
+            !awaitingWriteResponse
+        else {
+            return
+        }
+
+        awaitingWriteResponse = true
+        let packet = pendingWrites.removeFirst()
+        peripheral.writeValue(
+            packet,
+            for: txCharacteristic,
+            type: .withResponse
+        )
     }
 }
 
@@ -141,6 +190,8 @@ extension BLEBridgeTransport: CBCentralManagerDelegate {
         self.peripheral = nil
         txCharacteristic = nil
         rxCharacteristic = nil
+        pendingWrites.removeAll(keepingCapacity: true)
+        awaitingWriteResponse = false
         state = .idle
     }
 }
@@ -209,7 +260,28 @@ extension BLEBridgeTransport: CBPeripheralDelegate {
         if characteristic.isNotifying, txCharacteristic != nil {
             state = .connected
             onDiagnostic?("BLE bridge transport ready")
+            drainWrites()
         }
+    }
+
+    func peripheralIsReady(toSendWriteWithoutResponse peripheral: CBPeripheral) {
+        drainWrites()
+    }
+
+    func peripheral(
+        _ peripheral: CBPeripheral,
+        didWriteValueFor characteristic: CBCharacteristic,
+        error: Error?
+    ) {
+        guard characteristic.uuid == Self.phoneToBridgeUUID else { return }
+
+        awaitingWriteResponse = false
+
+        if let error {
+            onDiagnostic?("BLE TX write failed: \(error.localizedDescription)")
+        }
+
+        drainWrites()
     }
 
     func peripheral(
