@@ -63,13 +63,16 @@ class WiimoteRegisterBankTest {
     @Test
     fun `write 04 to A600FE activates MotionPlus`() {
         val result = bank.write(
-            state = WiimoteState(),
+            state = WiimoteState(
+                motionPlus = MotionPlusState(present = true),
+            ),
             address = 0xA600FE,
             data = byteArrayOf(0x04),
         )
 
         assertTrue(result.success)
         assertTrue(result.activateMotionPlus)
+        assertEquals(0x04, result.motionPlusMode)
     }
     @Test
     fun `MotionPlus calibration block is readable when present`() {
@@ -83,5 +86,16 @@ class WiimoteRegisterBankTest {
 
         assertNotNull(data)
         assertEquals(16, data.size)
+    }
+    @Test
+    fun `MotionPlus activation fails when not present`() {
+        val result = bank.write(
+            state = WiimoteState(),
+            address = 0xA600FE,
+            data = byteArrayOf(0x04),
+        )
+
+        assertEquals(false, result.success)
+        assertEquals(false, result.activateMotionPlus)
     }
 }
