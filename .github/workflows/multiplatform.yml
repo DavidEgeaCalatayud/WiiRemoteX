@@ -22,8 +22,8 @@ jobs:
         with:
           gradle-version: "9.6.0"
 
-      - name: Shared JVM tests
-        run: gradle :shared:jvmTest
+      - name: Core + shared JVM tests
+        run: gradle :core:protocol:jvmTest :core:session:jvmTest :core:trace:jvmTest :shared:jvmTest
 
   ios-framework:
     runs-on: macos-15
