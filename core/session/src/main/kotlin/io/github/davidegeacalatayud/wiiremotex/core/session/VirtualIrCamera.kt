@@ -22,6 +22,25 @@ class VirtualIrCamera(
 
     fun isCalibrated(): Boolean = center != null
 
+    fun projectTouch(
+        normalizedX: Float,
+        normalizedY: Float,
+        enabled: Boolean,
+    ): InfraredState {
+        if (!enabled) {
+            return InfraredState(enabled = false)
+        }
+
+        val x = (normalizedX.coerceIn(0f, 1f) * (IR_WIDTH - 1)).roundToInt()
+        val y = (normalizedY.coerceIn(0f, 1f) * (IR_HEIGHT - 1)).roundToInt()
+
+        return pointsAround(
+            centerX = x,
+            centerY = y,
+            enabled = true,
+        )
+    }
+
     fun project(
         orientation: Orientation,
         enabled: Boolean,
@@ -46,13 +65,29 @@ class VirtualIrCamera(
                 (pitchDelta / (verticalFieldOfViewDegrees / 2f)) * IR_CENTER_Y
             ).roundToInt()
 
+        return pointsAround(
+            centerX = x,
+            centerY = y,
+            enabled = true,
+        )
+    }
+
+    private fun pointsAround(
+        centerX: Int,
+        centerY: Int,
+        enabled: Boolean,
+    ): InfraredState {
+        if (!enabled) {
+            return InfraredState(enabled = false)
+        }
+
         val halfSpacing = virtualSensorBarSpacingPixels / 2
 
         return InfraredState(
             enabled = true,
             points = listOf(
-                point(x - halfSpacing, y),
-                point(x + halfSpacing, y),
+                point(centerX - halfSpacing, centerY),
+                point(centerX + halfSpacing, centerY),
                 InfraredPoint(),
                 InfraredPoint(),
             ),
