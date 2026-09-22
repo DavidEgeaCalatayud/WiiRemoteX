@@ -3,6 +3,7 @@ package io.github.davidegeacalatayud.wiiremotex
 import android.app.Application
 import android.content.Intent
 import androidx.lifecycle.AndroidViewModel
+import io.github.davidegeacalatayud.wiiremotex.core.model.ExtensionType
 import io.github.davidegeacalatayud.wiiremotex.core.model.WiiButton
 import kotlinx.coroutines.flow.StateFlow
 
@@ -30,5 +31,25 @@ class WiiRemoteViewModel(
 
     fun onButtonChanged(button: WiiButton, pressed: Boolean) {
         runtime.onButtonChanged(button, pressed)
+    }
+
+    fun calibratePointer() {
+        runtime.calibratePointer()
+    }
+
+    fun selectExtension(type: ExtensionType) {
+        runtime.selectExtension(type)
+    }
+
+    fun setNunchukStick(x: Int, y: Int) {
+        runtime.setNunchukStick(x, y)
+    }
+
+    fun setNunchukCPressed(pressed: Boolean) {
+        runtime.setNunchukCPressed(pressed)
+    }
+
+    fun setNunchukZPressed(pressed: Boolean) {
+        runtime.setNunchukZPressed(pressed)
     }
 }
