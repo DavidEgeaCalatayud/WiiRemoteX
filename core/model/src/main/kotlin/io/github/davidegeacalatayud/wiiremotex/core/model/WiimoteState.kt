@@ -74,6 +74,7 @@ data class MotionPlusState(
     val present: Boolean = false,
     val initialized: Boolean = false,
     val active: Boolean = false,
+    val activationMode: Int = 0x04,
     val passThroughNunchuk: Boolean = false,
     val yawSlow: Boolean = true,
     val rollSlow: Boolean = true,
