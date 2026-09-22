@@ -29,12 +29,14 @@ static void classic_gap_event_callback(
     switch (event) {
         case ESP_BT_GAP_PIN_REQ_EVT: {
             /*
-             * Wii red-SYNC permanent pairing uses the Wii console Bluetooth
-             * address itself as the six-byte binary PIN.
+             * Wii red-SYNC permanent pairing uses the six raw bytes of the
+             * Bluetooth host address in reverse order as the legacy PIN.
              *
-             * esp_bd_addr_t is exposed by ESP-IDF in the same byte order used
-             * when formatting XX:XX:XX:XX:XX:XX, so pass the requesting host
-             * address directly rather than converting it to ASCII.
+             * Example:
+             *   host BDA 11:22:33:44:55:66
+             *   PIN      66 55 44 33 22 11
+             *
+             * This is binary data, not the ASCII representation of the MAC.
              */
             log_bda("Legacy PIN requested by Wii host", param->pin_req.bda);
 
@@ -52,7 +54,10 @@ static void classic_gap_event_callback(
             }
 
             esp_bt_pin_code_t pin_code = {0};
-            memcpy(pin_code, param->pin_req.bda, ESP_BD_ADDR_LEN);
+            for (size_t index = 0; index < ESP_BD_ADDR_LEN; ++index) {
+                pin_code[index] =
+                    param->pin_req.bda[ESP_BD_ADDR_LEN - 1U - index];
+            }
 
             const esp_err_t result = esp_bt_gap_pin_reply(
                 param->pin_req.bda,
