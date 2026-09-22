@@ -7,15 +7,18 @@ import io.github.davidegeacalatayud.wiiremotex.core.model.WiimoteState
 class WiimoteDataReportEncoder(
     private val buttonsEncoder: CoreButtonsReportEncoder = CoreButtonsReportEncoder(),
 ) {
-    fun encode(state: WiimoteState): HidInputReport = when (state.reportMode) {
+    fun encode(
+        state: WiimoteState,
+        passThroughNunchukSample: Boolean = false,
+    ): HidInputReport = when (state.reportMode) {
         0x31 -> encodeButtonsAndAccelerometer(state)
-        0x32 -> encodeButtonsAndExtension(state, reportId = 0x32, extensionBytes = 8)
+        0x32 -> encodeButtonsAndExtension(state, reportId = 0x32, extensionBytes = 8, passThroughNunchukSample)
         0x33 -> encodeButtonsAccelerometerAndIr(state)
-        0x34 -> encodeButtonsAndExtension(state, reportId = 0x34, extensionBytes = 19)
-        0x35 -> encodeButtonsAccelerometerAndExtension(state, 16)
-        0x36 -> encodeButtonsIrAndExtension(state)
-        0x37 -> encodeButtonsAccelerometerIrAndExtension(state)
-        0x3D -> encodeExtensionOnly(state)
+        0x34 -> encodeButtonsAndExtension(state, reportId = 0x34, extensionBytes = 19, passThroughNunchukSample)
+        0x35 -> encodeButtonsAccelerometerAndExtension(state, 16, passThroughNunchukSample)
+        0x36 -> encodeButtonsIrAndExtension(state, passThroughNunchukSample)
+        0x37 -> encodeButtonsAccelerometerIrAndExtension(state, passThroughNunchukSample)
+        0x3D -> encodeExtensionOnly(state, passThroughNunchukSample)
         0x3E, 0x3F -> encodeInterleaved(state, state.reportMode)
         else -> buttonsEncoder.encode(state)
     }
@@ -81,9 +84,10 @@ class WiimoteDataReportEncoder(
         state: WiimoteState,
         reportId: Int,
         extensionBytes: Int,
+        passThroughNunchukSample: Boolean,
     ): HidInputReport {
         val buttons = buttonsEncoder.encode(state).payload
-        val extension = encodeExtensionPayload(state).copyOf(extensionBytes)
+        val extension = encodeExtensionPayload(state, passThroughNunchukSample).copyOf(extensionBytes)
         return HidInputReport(
             reportId = reportId,
             payload = buttons + extension,
@@ -93,6 +97,7 @@ class WiimoteDataReportEncoder(
     private fun encodeButtonsAccelerometerAndExtension(
         state: WiimoteState,
         extensionBytes: Int,
+        passThroughNunchukSample: Boolean,
     ): HidInputReport {
         val base = encodeButtonsAndAccelerometer(state).payload
         val extension = encodeExtensionPayload(state).copyOf(extensionBytes)
@@ -104,10 +109,11 @@ class WiimoteDataReportEncoder(
 
     private fun encodeButtonsIrAndExtension(
         state: WiimoteState,
+        passThroughNunchukSample: Boolean,
     ): HidInputReport {
         val buttons = buttonsEncoder.encode(state).payload
         val ir = encodeBasicIr(state.infrared.points)
-        val extension = encodeExtensionPayload(state).copyOf(9)
+        val extension = encodeExtensionPayload(state, passThroughNunchukSample).copyOf(9)
         return HidInputReport(
             reportId = 0x36,
             payload = buttons + ir + extension,
@@ -116,18 +122,20 @@ class WiimoteDataReportEncoder(
 
     private fun encodeExtensionOnly(
         state: WiimoteState,
+        passThroughNunchukSample: Boolean,
     ): HidInputReport =
         HidInputReport(
             reportId = 0x3D,
-            payload = encodeExtensionPayload(state).copyOf(21),
+            payload = encodeExtensionPayload(state, passThroughNunchukSample).copyOf(21),
         )
 
     private fun encodeButtonsAccelerometerIrAndExtension(
         state: WiimoteState,
+        passThroughNunchukSample: Boolean,
     ): HidInputReport {
         val base = encodeButtonsAndAccelerometer(state).payload
         val ir = encodeBasicIr(state.infrared.points)
-        val extension = encodeExtensionPayload(state).copyOf(6)
+        val extension = encodeExtensionPayload(state, passThroughNunchukSample).copyOf(6)
         return HidInputReport(
             reportId = 0x37,
             payload = base + ir + extension,
@@ -237,8 +245,16 @@ class WiimoteDataReportEncoder(
         return output
     }
 
-    fun encodeExtensionPayload(state: WiimoteState): ByteArray =
+    fun encodeExtensionPayload(
+        state: WiimoteState,
+        passThroughNunchukSample: Boolean = false,
+    ): ByteArray =
         when {
+            state.motionPlus.active &&
+                state.motionPlus.passThroughNunchuk &&
+                state.nunchuk.connected &&
+                passThroughNunchukSample -> encodeMotionPlusNunchukPassThrough(state.nunchuk)
+
             state.motionPlus.active -> encodeMotionPlus(state)
             state.nunchuk.connected -> encodeNunchuk(state.nunchuk)
             else -> ByteArray(6)
@@ -263,6 +279,30 @@ class WiimoteDataReportEncoder(
             ((ay shr 2) and 0xFF).toByte(),
             ((az shr 2) and 0xFF).toByte(),
             buttons.toByte(),
+        )
+    }
+
+    private fun encodeMotionPlusNunchukPassThrough(
+        state: NunchukState,
+    ): ByteArray {
+        val ax = state.accelerationX.coerceIn(0, 1023)
+        val ay = state.accelerationY.coerceIn(0, 1023)
+        val az = state.accelerationZ.coerceIn(0, 1023)
+
+        var last = 0
+        last = last or (((az shr 1) and 0x03) shl 6)
+        last = last or (((ay shr 1) and 0x01) shl 5)
+        last = last or (((ax shr 1) and 0x01) shl 4)
+        if (!state.cPressed) last = last or 0x08
+        if (!state.zPressed) last = last or 0x04
+
+        return byteArrayOf(
+            state.stickX.coerceIn(0, 255).toByte(),
+            state.stickY.coerceIn(0, 255).toByte(),
+            ((ax shr 2) and 0xFF).toByte(),
+            ((ay shr 2) and 0xFF).toByte(),
+            ((((az shr 3) and 0x7F) shl 1) or 0x01).toByte(),
+            last.toByte(),
         )
     }
 
