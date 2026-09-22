@@ -188,6 +188,25 @@ extension BLEBridgeTransport: CBPeripheralDelegate {
         }
 
         if txCharacteristic != nil, rxCharacteristic != nil {
+            state = .connecting
+            onDiagnostic?("Bridge characteristics ready; enabling notifications")
+        }
+    }
+
+    func peripheral(
+        _ peripheral: CBPeripheral,
+        didUpdateNotificationStateFor characteristic: CBCharacteristic,
+        error: Error?
+    ) {
+        guard characteristic.uuid == Self.bridgeToPhoneUUID else { return }
+
+        if let error {
+            onDiagnostic?("BLE notification subscription failed: \(error.localizedDescription)")
+            state = .idle
+            return
+        }
+
+        if characteristic.isNotifying, txCharacteristic != nil {
             state = .connected
             onDiagnostic?("BLE bridge transport ready")
         }
