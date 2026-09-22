@@ -20,6 +20,7 @@ final class WiiRemoteViewModel: ObservableObject {
     private let engine = IosWiimoteEngine()
     private let bridge = BLEBridgeTransport()
     private let motion = MotionInput()
+    private let traceRecorder = IOSHardwareTraceRecorder()
     private var reportTimer: Timer?
     private var cPressed = false
     private var zPressed = false
@@ -52,9 +53,11 @@ final class WiiRemoteViewModel: ObservableObject {
             }
             .store(in: &cancellables)
 
+        restoreCalibration()
         UIDevice.current.isBatteryMonitoringEnabled = true
         updateBattery()
         motion.start()
+        recordTrace(direction: "SYS", event: "iOS runtime started")
     }
 
     deinit {
@@ -118,6 +121,7 @@ final class WiiRemoteViewModel: ObservableObject {
             yRadPerSec: sample.gyroYRadPerSec,
             zRadPerSec: sample.gyroZRadPerSec
         )
+        persistGyroBias(sample)
 
         send(
             engine.recenterMotionPointer(
@@ -183,6 +187,12 @@ final class WiiRemoteViewModel: ObservableObject {
     }
 
     private func handleBridgePacket(_ data: Data) {
+        recordTrace(
+            direction: "RX",
+            event: bridgePacketEvent(data),
+            packet: data
+        )
+
         guard data.count <= 20 else {
             appendDiagnostic("Rejected BLE packet larger than protocol maximum")
             return
@@ -194,7 +204,16 @@ final class WiiRemoteViewModel: ObservableObject {
 
     private func send(_ frames: [KotlinByteArray]) {
         guard !frames.isEmpty else { return }
-        frames.forEach { bridge.send($0.data) }
+
+        frames.forEach { frame in
+            let data = frame.data
+            recordTrace(
+                direction: "TX",
+                event: bridgePacketEvent(data),
+                packet: data
+            )
+            bridge.send(data)
+        }
     }
 
     private func startContinuousReports() {
@@ -236,11 +255,76 @@ final class WiiRemoteViewModel: ObservableObject {
         }
     }
 
+    func hardwareTraceJSON() -> String {
+        traceRecorder.json()
+    }
+
+    func clearHardwareTrace() {
+        traceRecorder.clear()
+        appendDiagnostic("Hardware trace cleared")
+        recordTrace(direction: "SYS", event: "hardware trace cleared")
+    }
+
+    private func restoreCalibration() {
+        let defaults = UserDefaults.standard
+        guard defaults.object(forKey: CalibrationKey.gyroBiasX) != nil else {
+            return
+        }
+
+        engine.updateGyroBias(
+            xRadPerSec: Float(defaults.double(forKey: CalibrationKey.gyroBiasX)),
+            yRadPerSec: Float(defaults.double(forKey: CalibrationKey.gyroBiasY)),
+            zRadPerSec: Float(defaults.double(forKey: CalibrationKey.gyroBiasZ))
+        )
+    }
+
+    private func persistGyroBias(_ sample: MotionSample) {
+        let defaults = UserDefaults.standard
+        defaults.set(Double(sample.gyroXRadPerSec), forKey: CalibrationKey.gyroBiasX)
+        defaults.set(Double(sample.gyroYRadPerSec), forKey: CalibrationKey.gyroBiasY)
+        defaults.set(Double(sample.gyroZRadPerSec), forKey: CalibrationKey.gyroBiasZ)
+    }
+
+    private func recordTrace(
+        direction: String,
+        event: String,
+        packet: Data? = nil
+    ) {
+        traceRecorder.record(
+            direction: direction,
+            event: event,
+            packet: packet,
+            connectionState: wiiState,
+            reportMode: reportMode,
+            nunchukConnected: engine.nunchukConnected,
+            irEnabled: engine.infraredEnabled,
+            motionPlusPresent: engine.motionPlusPresent
+        )
+    }
+
+    private func bridgePacketEvent(_ data: Data) -> String {
+        guard data.count >= 2 else { return "invalid_bridge_packet" }
+
+        switch data[data.index(data.startIndex, offsetBy: 1)] {
+        case 0x01: return "input_report_fragment"
+        case 0x02: return "output_report_fragment"
+        case 0x03: return "status_fragment"
+        case 0x04: return "control_fragment"
+        default: return "unknown_bridge_fragment"
+        }
+    }
+
     private func appendDiagnostic(_ message: String) {
         let formatter = DateFormatter()
         formatter.dateFormat = "HH:mm:ss.SSS"
         diagnostics.append("\(formatter.string(from: Date()))  \(message)")
         diagnostics = Array(diagnostics.suffix(40))
+    }
+
+    private enum CalibrationKey {
+        static let gyroBiasX = "wiiremotex.gyro_bias_x_rad_s"
+        static let gyroBiasY = "wiiremotex.gyro_bias_y_rad_s"
+        static let gyroBiasZ = "wiiremotex.gyro_bias_z_rad_s"
     }
 
     private static func label(for state: BLEBridgeTransport.State) -> String {
