@@ -19,3 +19,15 @@ jobs:
           esp_idf_version: latest
           target: esp32
           path: firmware/esp32
+
+      - name: Upload flashable ESP32 firmware
+        uses: actions/upload-artifact@v4
+        with:
+          name: WiiRemoteX-ESP32-firmware
+          path: |
+            firmware/esp32/build/wiiremotex_esp32_bridge.bin
+            firmware/esp32/build/bootloader/bootloader.bin
+            firmware/esp32/build/partition_table/partition-table.bin
+            firmware/esp32/build/flash_args
+            firmware/esp32/build/flasher_args.json
+          if-no-files-found: error
