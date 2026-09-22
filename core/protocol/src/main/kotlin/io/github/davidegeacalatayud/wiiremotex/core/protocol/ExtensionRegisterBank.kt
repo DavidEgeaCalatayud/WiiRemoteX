@@ -99,7 +99,7 @@ class ExtensionRegisterBank(
     ): Byte? =
         when (extension) {
             ExtensionState.None -> {
-                if (address in IR_REGISTER_START..IR_REGISTER_END) 0x00 else null
+                if (address in IR_REGISTER_START..IR_REGISTER_END) 0x00.toByte() else null
             }
 
             is ExtensionState.Nunchuk -> readNunchukByte(extension, address)
@@ -111,7 +111,7 @@ class ExtensionRegisterBank(
         extension: ExtensionState.Nunchuk,
         address: Int,
     ): Byte? {
-        if (address in IR_REGISTER_START..IR_REGISTER_END) return 0x00
+        if (address in IR_REGISTER_START..IR_REGISTER_END) return 0x00.toByte()
 
         val offset = address - EXTENSION_REGISTER_START
         return when {
@@ -124,7 +124,7 @@ class ExtensionRegisterBank(
             offset in 0xFA..0xFF ->
                 NUNCHUK_ID[offset - 0xFA]
 
-            offset in 0x00..0xFF -> 0x00
+            offset in 0x00..0xFF -> 0x00.toByte()
             else -> null
         }
     }
@@ -133,7 +133,7 @@ class ExtensionRegisterBank(
         state: MotionPlusState,
         address: Int,
     ): Byte? {
-        if (address in IR_REGISTER_START..IR_REGISTER_END) return 0x00
+        if (address in IR_REGISTER_START..IR_REGISTER_END) return 0x00.toByte()
 
         if (state.active) {
             val a4Offset = address - EXTENSION_REGISTER_START
@@ -157,10 +157,10 @@ class ExtensionRegisterBank(
                     MOTION_PLUS_INACTIVE_ID[a6Offset - 0xFA]
                 }
 
-            a6Offset in 0x00..0xFF -> 0x00
+            a6Offset in 0x00..0xFF -> 0x00.toByte()
             else -> {
                 val a4Offset = address - EXTENSION_REGISTER_START
-                if (state.active && a4Offset in 0x00..0xFF) 0x00 else null
+                if (state.active && a4Offset in 0x00..0xFF) 0x00.toByte() else null
             }
         }
     }
@@ -247,18 +247,18 @@ class ExtensionRegisterBank(
 
         private val MOTION_PLUS_CALIBRATION = ByteArray(32).apply {
             // Plausible neutral/default block. Games should still calibrate zero at runtime.
-            this[0] = 0x1F
-            this[1] = 0x7F
-            this[2] = 0x1F
-            this[3] = 0x7F
-            this[4] = 0x1F
-            this[5] = 0x7F
-            this[16] = 0x1F
-            this[17] = 0x7F
-            this[18] = 0x1F
-            this[19] = 0x7F
-            this[20] = 0x1F
-            this[21] = 0x7F
+            this[0] = 0x1F.toByte()
+            this[1] = 0x7F.toByte()
+            this[2] = 0x1F.toByte()
+            this[3] = 0x7F.toByte()
+            this[4] = 0x1F.toByte()
+            this[5] = 0x7F.toByte()
+            this[16] = 0x1F.toByte()
+            this[17] = 0x7F.toByte()
+            this[18] = 0x1F.toByte()
+            this[19] = 0x7F.toByte()
+            this[20] = 0x1F.toByte()
+            this[21] = 0x7F.toByte()
         }
     }
 }
