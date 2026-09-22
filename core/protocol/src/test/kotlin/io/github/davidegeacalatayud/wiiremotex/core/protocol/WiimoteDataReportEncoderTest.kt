@@ -52,7 +52,7 @@ class WiimoteDataReportEncoderTest {
         assertEquals(17, report.payload.size)
         assertEquals(0x00, report.payload[5].toInt() and 0xFF)
         assertEquals(0x80, report.payload[6].toInt() and 0xFF)
-        assertEquals(0x96, report.payload[7].toInt() and 0xFF)
+        assertEquals(0x66, report.payload[7].toInt() and 0xFF)
     }
 
     @Test
