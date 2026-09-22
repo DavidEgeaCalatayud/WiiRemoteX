@@ -26,7 +26,7 @@ class InfraredCodec {
         }
 
         val third =
-            ((p.y shr 8) and 0x03 shl 6) or
+            (((p.y shr 8) and 0x03) shl 6) or
                 (((p.x shr 8) and 0x03) shl 4) or
                 (p.size and 0x0F)
 
