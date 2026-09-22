@@ -135,6 +135,7 @@ class WiimoteSessionEngine(
 
             is HostCommand.WriteMemory -> {
                 state = state.copy(rumbleEnabled = command.rumbleEnabled)
+                val extensionBefore = state.extension
 
                 val result =
                     if (command.registerSpace) {
@@ -152,15 +153,29 @@ class WiimoteSessionEngine(
 
                 state = state.copy(extension = result.extension)
 
-                listOf(
-                    WiimoteEffect.SendReport(
-                        memoryEncoder.encodeAck(
-                            state = state,
-                            outputReportId = 0x16,
-                            error = result.error,
+                buildList {
+                    add(
+                        WiimoteEffect.SendReport(
+                            memoryEncoder.encodeAck(
+                                state = state,
+                                outputReportId = 0x16,
+                                error = result.error,
+                            ),
                         ),
-                    ),
-                )
+                    )
+
+                    val motionPlusActivationChanged =
+                        (extensionBefore as? ExtensionState.MotionPlus)?.value?.active !=
+                            (state.extension as? ExtensionState.MotionPlus)?.value?.active
+
+                    if (motionPlusActivationChanged) {
+                        add(
+                            WiimoteEffect.SendReport(
+                                statusEncoder.encode(state),
+                            ),
+                        )
+                    }
+                }
             }
 
             is HostCommand.ReadMemory -> {
