@@ -171,7 +171,7 @@ class WiimoteDataReportEncoder(
         return output
     }
 
-    private fun encodeExtension(state: WiimoteState): ByteArray =
+    fun encodeExtensionPayload(state: WiimoteState): ByteArray =
         when {
             state.motionPlus.enabled -> encodeMotionPlus(state)
             state.nunchuk.connected -> encodeNunchuk(state.nunchuk)
