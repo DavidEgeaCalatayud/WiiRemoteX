@@ -2,7 +2,6 @@ package io.github.davidegeacalatayud.wiiremotex
 
 import android.app.Application
 import android.content.Intent
-import androidx.core.content.ContextCompat
 import androidx.lifecycle.AndroidViewModel
 import io.github.davidegeacalatayud.wiiremotex.core.model.WiiButton
 import kotlinx.coroutines.flow.StateFlow
@@ -20,14 +19,13 @@ class WiiRemoteViewModel(
         val intent = Intent(app, WiiRemoteForegroundService::class.java).apply {
             action = WiiRemoteForegroundService.ACTION_START_HID
         }
-        ContextCompat.startForegroundService(app, intent)
+        app.startForegroundService(intent)
     }
 
     fun stopHid() {
-        val intent = Intent(app, WiiRemoteForegroundService::class.java).apply {
-            action = WiiRemoteForegroundService.ACTION_STOP_HID
-        }
-        app.startService(intent)
+        app.stopService(
+            Intent(app, WiiRemoteForegroundService::class.java),
+        )
     }
 
     fun onButtonChanged(button: WiiButton, pressed: Boolean) {
