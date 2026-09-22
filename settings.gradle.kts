@@ -21,4 +21,5 @@ include(
     ":platform:bluetooth",
     ":platform:sensors",
     ":feature:controller",
+    ":shared",
 )
