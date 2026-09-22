@@ -12,6 +12,7 @@ import io.github.davidegeacalatayud.wiiremotex.core.model.ExtensionState
 import io.github.davidegeacalatayud.wiiremotex.core.model.ExtensionType
 import io.github.davidegeacalatayud.wiiremotex.core.model.MotionPlusState
 import io.github.davidegeacalatayud.wiiremotex.core.model.MotionState
+import io.github.davidegeacalatayud.wiiremotex.core.model.PointerMode
 import io.github.davidegeacalatayud.wiiremotex.core.model.WiiButton
 import io.github.davidegeacalatayud.wiiremotex.core.model.WiimoteState
 import io.github.davidegeacalatayud.wiiremotex.core.session.SessionResult
@@ -50,6 +51,7 @@ data class WiiRemoteUiState(
     val diagnostics: List<DiagnosticEntry> = emptyList(),
     val lastError: String? = null,
     val pointerCalibrated: Boolean = false,
+    val pointerMode: PointerMode = PointerMode.MOTION,
     val sensors: SensorAvailability = SensorAvailability(),
 )
 
@@ -59,6 +61,8 @@ class WiiRemoteRuntime(
 
     private val session = WiimoteSessionEngine()
     private val virtualIrCamera = VirtualIrCamera()
+    private var touchPointerX = 0.5f
+    private var touchPointerY = 0.5f
     private val batteryManager = application.getSystemService(BatteryManager::class.java)
 
     private val transport = AndroidHidTransport(
@@ -140,6 +144,49 @@ class WiiRemoteRuntime(
             "IR pointer calibrated at yaw=${orientation.yawDegrees.format1()} " +
                 "pitch=${orientation.pitchDegrees.format1()}",
         )
+    }
+
+    fun setPointerMode(mode: PointerMode) {
+        _uiState.update { it.copy(pointerMode = mode) }
+
+        if (mode == PointerMode.TOUCH) {
+            updateVirtualIr(
+                emitReport = _uiState.value.hidStage == HidStage.CONNECTED,
+            )
+        }
+
+        log("SYS", "Pointer mode: $mode")
+    }
+
+    fun setTouchPointer(
+        normalizedX: Float,
+        normalizedY: Float,
+    ) {
+        touchPointerX = normalizedX.coerceIn(0f, 1f)
+        touchPointerY = normalizedY.coerceIn(0f, 1f)
+
+        if (_uiState.value.pointerMode != PointerMode.TOUCH) {
+            return
+        }
+
+        val projected = virtualIrCamera.projectTouch(
+            normalizedX = touchPointerX,
+            normalizedY = touchPointerY,
+            enabled = session.state.infrared.enabled,
+        )
+
+        val result = session.setInfrared(
+            infrared = projected,
+            emitReport =
+                _uiState.value.hidStage == HidStage.CONNECTED &&
+                    session.state.reportMode in IR_REPORT_MODES,
+        )
+
+        if (result.effects.isEmpty()) {
+            publishSessionState()
+        } else {
+            apply(result)
+        }
     }
 
     fun selectExtension(type: ExtensionType) {
@@ -281,15 +328,27 @@ class WiiRemoteRuntime(
     }
 
     private fun updateVirtualIr(emitReport: Boolean) {
-        if (!virtualIrCamera.isCalibrated()) {
-            publishSessionState()
-            return
-        }
+        val projected =
+            when (_uiState.value.pointerMode) {
+                PointerMode.MOTION -> {
+                    if (!virtualIrCamera.isCalibrated()) {
+                        publishSessionState()
+                        return
+                    }
 
-        val projected = virtualIrCamera.project(
-            orientation = session.state.motion.orientation,
-            enabled = session.state.infrared.enabled,
-        )
+                    virtualIrCamera.project(
+                        orientation = session.state.motion.orientation,
+                        enabled = session.state.infrared.enabled,
+                    )
+                }
+
+                PointerMode.TOUCH ->
+                    virtualIrCamera.projectTouch(
+                        normalizedX = touchPointerX,
+                        normalizedY = touchPointerY,
+                        enabled = session.state.infrared.enabled,
+                    )
+            }
         val result = session.setInfrared(projected, emitReport = emitReport)
 
         if (emitReport) apply(result) else publishSessionState()
@@ -409,6 +468,7 @@ class WiiRemoteRuntime(
         const val MAX_LOG_LINES = 160
         val SENSOR_REPORT_MODES = setOf(0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37, 0x3D)
         val EXTENSION_REPORT_MODES = setOf(0x32, 0x34, 0x35, 0x36, 0x37, 0x3D)
+        val IR_REPORT_MODES = setOf(0x33, 0x36, 0x37)
         val TIME_FORMAT: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm:ss.SSS")
     }
 }
