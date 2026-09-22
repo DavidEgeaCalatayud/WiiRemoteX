@@ -2,6 +2,8 @@ package io.github.davidegeacalatayud.wiiremotex.core.protocol
 
 import io.github.davidegeacalatayud.wiiremotex.core.model.InfraredMode
 import io.github.davidegeacalatayud.wiiremotex.core.model.WiimoteState
+import kotlinx.atomicfu.locks.SynchronizedObject
+import kotlinx.atomicfu.locks.synchronized
 
 data class RegisterWriteResult(
     val success: Boolean,
@@ -18,6 +20,7 @@ data class RegisterWriteResult(
 class WiimoteRegisterBank(
     private val dataEncoder: WiimoteDataReportEncoder = WiimoteDataReportEncoder(),
 ) {
+    private val lock = SynchronizedObject()
     private val extensionRegisters = ByteArray(0x100)
     private val motionPlusRegisters = ByteArray(0x100)
     private val infraredRegisters = ByteArray(0x100)
@@ -33,16 +36,14 @@ class WiimoteRegisterBank(
         motionPlusRegisters[0xF7] = 0x02
     }
 
-    @Synchronized
-    fun resetExtension() {
+    fun resetExtension() = synchronized(lock) {
         extensionInitialized = false
         extensionEncryptionDisabled = false
         extensionRegisters.fill(0)
         NUNCHUK_ID.copyInto(extensionRegisters, destinationOffset = 0xFA)
     }
 
-    @Synchronized
-    fun resetMotionPlus() {
+    fun resetMotionPlus() = synchronized(lock) {
         motionPlusInitialized = false
         motionPlusRegisters.fill(0)
         MOTION_PLUS_INACTIVE_ID.copyInto(motionPlusRegisters, destinationOffset = 0xFA)
@@ -50,12 +51,11 @@ class WiimoteRegisterBank(
         motionPlusRegisters[0xF7] = 0x02
     }
 
-    @Synchronized
     fun read(
         state: WiimoteState,
         address: Int,
         size: Int,
-    ): ByteArray? {
+    ): ByteArray? = synchronized(lock) {
         val normalized = canonicalAddress(address)
         val requested = size.coerceIn(1, 16)
         val offset = normalized and 0xFF
@@ -117,12 +117,11 @@ class WiimoteRegisterBank(
         }
     }
 
-    @Synchronized
     fun write(
         state: WiimoteState,
         address: Int,
         data: ByteArray,
-    ): RegisterWriteResult {
+    ): RegisterWriteResult = synchronized(lock) {
         val normalized = canonicalAddress(address)
         val offset = normalized and 0xFF
 
