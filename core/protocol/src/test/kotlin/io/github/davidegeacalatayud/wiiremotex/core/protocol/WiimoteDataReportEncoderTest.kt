@@ -1,5 +1,6 @@
 package io.github.davidegeacalatayud.wiiremotex.core.protocol
 
+import io.github.davidegeacalatayud.wiiremotex.core.model.InfraredMode
 import io.github.davidegeacalatayud.wiiremotex.core.model.InfraredPoint
 import io.github.davidegeacalatayud.wiiremotex.core.model.InfraredState
 import io.github.davidegeacalatayud.wiiremotex.core.model.MotionPlusState
@@ -41,6 +42,10 @@ class WiimoteDataReportEncoderTest {
                 reportMode = 0x33,
                 infrared = InfraredState(
                     enabled = true,
+                    pixelClockEnabled = true,
+                    logicEnabled = true,
+                    configured = true,
+                    mode = InfraredMode.EXTENDED,
                     points = listOf(
                         InfraredPoint(x = 512, y = 384, size = 6, visible = true),
                     ),
@@ -62,6 +67,8 @@ class WiimoteDataReportEncoderTest {
                 reportMode = 0x32,
                 nunchuk = NunchukState(
                     connected = true,
+                    initialized = true,
+                    encryptionDisabled = true,
                     stickX = 200,
                     stickY = 50,
                     cPressed = true,
@@ -100,6 +107,10 @@ class WiimoteDataReportEncoderTest {
             reportMode = 0x3E,
             infrared = InfraredState(
                 enabled = true,
+                pixelClockEnabled = true,
+                logicEnabled = true,
+                configured = true,
+                mode = InfraredMode.FULL,
                 points = listOf(
                     InfraredPoint(x = 320, y = 240, size = 6, visible = true),
                     InfraredPoint(x = 700, y = 240, size = 6, visible = true),
@@ -121,6 +132,8 @@ class WiimoteDataReportEncoderTest {
             reportMode = 0x32,
             nunchuk = NunchukState(
                 connected = true,
+                initialized = true,
+                encryptionDisabled = true,
                 stickX = 180,
                 stickY = 90,
             ),
@@ -145,5 +158,27 @@ class WiimoteDataReportEncoderTest {
         assertEquals(0x00, nunchuk.payload[7].toInt() and 0x02)
         assertEquals(180, nunchuk.payload[2].toInt() and 0xFF)
         assertEquals(90, nunchuk.payload[3].toInt() and 0xFF)
+    }
+    @Test
+    fun `IR data stays hidden until camera is configured for matching mode`() {
+        val report = encoder.encode(
+            WiimoteState(
+                reportMode = 0x33,
+                infrared = InfraredState(
+                    enabled = true,
+                    pixelClockEnabled = true,
+                    logicEnabled = true,
+                    configured = false,
+                    mode = InfraredMode.EXTENDED,
+                    points = listOf(
+                        InfraredPoint(x = 512, y = 384, visible = true),
+                    ),
+                ),
+            ),
+        )
+
+        assertEquals(0xFF, report.payload[5].toInt() and 0xFF)
+        assertEquals(0xFF, report.payload[6].toInt() and 0xFF)
+        assertEquals(0xFF, report.payload[7].toInt() and 0xFF)
     }
 }
