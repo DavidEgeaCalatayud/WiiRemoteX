@@ -150,7 +150,7 @@ final class IOSHardwareTraceRecorder {
 
     private static func deviceModelIdentifier() -> String {
         var systemInfo = utsname()
-        uname(&systemInfo.machine)
+        uname(&systemInfo)
 
         return withUnsafePointer(to: &systemInfo.machine) {
             $0.withMemoryRebound(to: CChar.self, capacity: 1) {
