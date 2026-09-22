@@ -195,6 +195,20 @@ struct ContentView: View {
     private var diagnosticsCard: some View {
         GroupBox("Diagnostics") {
             VStack(alignment: .leading, spacing: 5) {
+                HStack {
+                    ShareLink(
+                        item: model.hardwareTraceJSON(),
+                        subject: Text("WiiRemoteX iOS hardware trace"),
+                        message: Text("Structured WiiRemoteX hardware trace JSON")
+                    ) {
+                        Label("Share JSON trace", systemImage: "square.and.arrow.up")
+                    }
+
+                    Button("Clear trace") {
+                        model.clearHardwareTrace()
+                    }
+                }
+
                 if model.diagnostics.isEmpty {
                     Text("No events yet")
                         .foregroundStyle(.secondary)
