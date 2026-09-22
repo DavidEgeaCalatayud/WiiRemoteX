@@ -15,6 +15,7 @@ import io.github.davidegeacalatayud.wiiremotex.core.protocol.StatusReportEncoder
 import io.github.davidegeacalatayud.wiiremotex.core.protocol.WiimoteEeprom
 import io.github.davidegeacalatayud.wiiremotex.core.protocol.WiimoteRegisterBank
 import io.github.davidegeacalatayud.wiiremotex.core.protocol.WiimoteDataReportEncoder
+import kotlin.math.abs
 
 sealed interface WiimoteEffect {
     data class SendReport(val report: HidInputReport) : WiimoteEffect
@@ -53,6 +54,11 @@ class WiimoteSessionEngine(
     fun setMotion(motion: MotionState): SessionResult {
         state = state.copy(
             motion = motion,
+            motionPlus = state.motionPlus.copy(
+                yawSlow = abs(motion.gyroYaw - MOTION_PLUS_ZERO) < MOTION_PLUS_FAST_THRESHOLD,
+                rollSlow = abs(motion.gyroRoll - MOTION_PLUS_ZERO) < MOTION_PLUS_FAST_THRESHOLD,
+                pitchSlow = abs(motion.gyroPitch - MOTION_PLUS_ZERO) < MOTION_PLUS_FAST_THRESHOLD,
+            ),
             nunchuk = if (state.nunchuk.connected) {
                 state.nunchuk.copy(
                     accelerationX = motion.accelerationX,
@@ -349,4 +355,9 @@ class WiimoteSessionEngine(
 
     private fun reportModeIncludesExtension(mode: Int): Boolean =
         mode in setOf(0x32, 0x34, 0x35, 0x36, 0x37, 0x3D)
+
+    private companion object {
+        const val MOTION_PLUS_ZERO = 0x1F7F
+        const val MOTION_PLUS_FAST_THRESHOLD = 4_000
+    }
 }
