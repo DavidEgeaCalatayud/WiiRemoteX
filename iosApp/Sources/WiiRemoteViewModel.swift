@@ -8,6 +8,7 @@ final class WiiRemoteViewModel: ObservableObject {
     @Published private(set) var bridgeState = "Idle"
     @Published private(set) var bridgeProtocolState = "Waiting"
     @Published private(set) var canPairWii = false
+    @Published private(set) var canStopWiiPairing = false
     @Published private(set) var wiiState = "Disconnected"
     @Published private(set) var reportMode = "0x30"
     @Published private(set) var diagnostics: [String] = []
@@ -86,6 +87,11 @@ final class WiiRemoteViewModel: ObservableObject {
 
         send(engine.startWiiPairingPackets())
         appendDiagnostic("Requested Wii pairing mode on ESP32")
+    }
+
+    func stopWiiPairing() {
+        send(engine.stopWiiPairingPackets())
+        appendDiagnostic("Requested Wii pairing stop on ESP32")
     }
 
     func clearWiiBond() {
@@ -252,7 +258,12 @@ final class WiiRemoteViewModel: ObservableObject {
     private func refreshSharedState() {
         reportMode = String(format: "0x%02X", engine.reportMode)
         bridgeProtocolState = engine.bridgeProtocolStatusLabel
-        canPairWii = engine.bridgeProtocolCompatible
+        canPairWii =
+            engine.bridgeProtocolCompatible &&
+            engine.wiiConnectionState == 0
+        canStopWiiPairing =
+            engine.bridgeProtocolCompatible &&
+            engine.wiiConnectionState == 1
         wiiState = engine.wiiConnectionStateLabel
 
         let bridgeErrorCode = engine.bridgeErrorCode
