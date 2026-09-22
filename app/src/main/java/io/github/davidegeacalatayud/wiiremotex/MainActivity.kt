@@ -51,22 +51,35 @@ class MainActivity : ComponentActivity() {
                 Surface {
                     ControllerScreen(
                         connectionLabel = state.hidStage.name,
+                        useEsp32Bridge = state.transportMode == TransportMode.ESP32_BRIDGE,
+                        bridgeReady = state.bridgeReady,
+                        bridgeProtocolVersion = state.bridgeProtocolVersion,
+                        bridgeFirmwareVersion = state.bridgeFirmwareVersion,
                         wiimoteState = state.wiimote,
                         diagnosticLines = state.diagnostics.takeLast(8).map { entry ->
                             "${entry.timestamp} ${entry.direction}  ${entry.message}"
                         },
                         lastError = state.lastError,
+                        onTransportChanged = { useBridge ->
+                            viewModel.selectTransport(
+                                if (useBridge) TransportMode.ESP32_BRIDGE
+                                else TransportMode.DIRECT_ANDROID_HID,
+                            )
+                        },
                         onStartHid = {
-                            withBluetoothPermissions {
+                            withBluetoothPermissions(state.transportMode) {
                                 viewModel.startHid()
                             }
                         },
                         onMakeDiscoverable = {
-                            withBluetoothPermissions {
+                            withBluetoothPermissions(TransportMode.DIRECT_ANDROID_HID) {
                                 requestDiscoverable()
                             }
                         },
                         onStopHid = viewModel::stopHid,
+                        onStartWiiPairing = viewModel::startWiiPairing,
+                        onStopWiiPairing = viewModel::stopWiiPairing,
+                        onClearWiiBond = viewModel::clearWiiBond,
                         onShareDiagnostics = {
                             shareDiagnostics(state)
                         },
@@ -91,14 +104,31 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun withBluetoothPermissions(action: () -> Unit) {
-        val required = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            arrayOf(
-                Manifest.permission.BLUETOOTH_CONNECT,
-                Manifest.permission.BLUETOOTH_ADVERTISE,
-            )
-        } else {
-            emptyArray()
+    private fun withBluetoothPermissions(
+        mode: TransportMode,
+        action: () -> Unit,
+    ) {
+        val required = when {
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
+                mode == TransportMode.ESP32_BRIDGE -> {
+                arrayOf(
+                    Manifest.permission.BLUETOOTH_CONNECT,
+                    Manifest.permission.BLUETOOTH_SCAN,
+                )
+            }
+
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> {
+                arrayOf(
+                    Manifest.permission.BLUETOOTH_CONNECT,
+                    Manifest.permission.BLUETOOTH_ADVERTISE,
+                )
+            }
+
+            mode == TransportMode.ESP32_BRIDGE -> {
+                arrayOf(Manifest.permission.ACCESS_FINE_LOCATION)
+            }
+
+            else -> emptyArray()
         }
 
         val missing = required.filter { permission ->
@@ -119,7 +149,13 @@ class MainActivity : ComponentActivity() {
             appendLine("WiiRemoteX diagnostics")
             appendLine("Device: ${android.os.Build.MANUFACTURER} ${android.os.Build.MODEL}")
             appendLine("Android: ${android.os.Build.VERSION.RELEASE} (API ${android.os.Build.VERSION.SDK_INT})")
+            appendLine("Transport: ${state.transportMode.displayName}")
             appendLine("HID stage: ${state.hidStage}")
+            if (state.transportMode == TransportMode.ESP32_BRIDGE) {
+                appendLine("Bridge ready: ${state.bridgeReady}")
+                appendLine("Bridge protocol: ${state.bridgeProtocolVersion ?: "unknown"}")
+                appendLine("Bridge firmware: ${state.bridgeFirmwareVersion ?: "unknown"}")
+            }
             appendLine("Report mode: 0x${state.wiimote.reportMode.toString(16).uppercase().padStart(2, '0')}")
             appendLine("Data reporting enabled: ${state.wiimote.dataReportingEnabled}")
             appendLine("Continuous reporting: ${state.wiimote.continuousReporting}")
