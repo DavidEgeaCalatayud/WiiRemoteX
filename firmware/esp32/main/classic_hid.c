@@ -13,6 +13,91 @@ static esp_hidd_dev_t *s_hid_dev;
 static classic_hid_output_callback_t s_output_callback;
 static classic_hid_connection_callback_t s_connection_callback;
 
+static void log_bda(const char *prefix, const esp_bd_addr_t bda) {
+    ESP_LOGI(
+        TAG,
+        "%s %02X:%02X:%02X:%02X:%02X:%02X",
+        prefix,
+        bda[0], bda[1], bda[2], bda[3], bda[4], bda[5]
+    );
+}
+
+static void classic_gap_event_callback(
+    esp_bt_gap_cb_event_t event,
+    esp_bt_gap_cb_param_t *param
+) {
+    switch (event) {
+        case ESP_BT_GAP_PIN_REQ_EVT: {
+            /*
+             * Wii red-SYNC permanent pairing uses the Wii console Bluetooth
+             * address itself as the six-byte binary PIN.
+             *
+             * esp_bd_addr_t is exposed by ESP-IDF in the same byte order used
+             * when formatting XX:XX:XX:XX:XX:XX, so pass the requesting host
+             * address directly rather than converting it to ASCII.
+             */
+            log_bda("Legacy PIN requested by Wii host", param->pin_req.bda);
+
+            if (param->pin_req.min_16_digit) {
+                ESP_LOGW(TAG, "Peer requires a 16-digit PIN; rejecting Wii pairing");
+                ESP_ERROR_CHECK(
+                    esp_bt_gap_pin_reply(
+                        param->pin_req.bda,
+                        false,
+                        0,
+                        NULL
+                    )
+                );
+                break;
+            }
+
+            esp_bt_pin_code_t pin_code = {0};
+            memcpy(pin_code, param->pin_req.bda, ESP_BD_ADDR_LEN);
+
+            const esp_err_t result = esp_bt_gap_pin_reply(
+                param->pin_req.bda,
+                true,
+                ESP_BD_ADDR_LEN,
+                pin_code
+            );
+
+            if (result == ESP_OK) {
+                ESP_LOGI(TAG, "Replied with six-byte Wii console BD-address PIN");
+            } else {
+                ESP_LOGE(TAG, "PIN reply failed: %s", esp_err_to_name(result));
+            }
+            break;
+        }
+
+        case ESP_BT_GAP_AUTH_CMPL_EVT:
+            if (param->auth_cmpl.stat == ESP_BT_STATUS_SUCCESS) {
+                log_bda("Wii host authenticated", param->auth_cmpl.bda);
+            } else {
+                ESP_LOGW(
+                    TAG,
+                    "Wii authentication failed: status=%d",
+                    param->auth_cmpl.stat
+                );
+            }
+            break;
+
+        case ESP_BT_GAP_CFM_REQ_EVT:
+            /*
+             * A genuine RVL-CNT-01 pairing flow is legacy-PIN based. Log and
+             * accept SSP confirmation if a host/stack chooses that path so the
+             * transport remains observable instead of silently stalling.
+             */
+            log_bda("SSP confirmation requested by host", param->cfm_req.bda);
+            ESP_ERROR_CHECK(
+                esp_bt_gap_ssp_confirm_reply(param->cfm_req.bda, true)
+            );
+            break;
+
+        default:
+            break;
+    }
+}
+
 static const uint8_t s_wiimote_report_descriptor[] = {
     0x05, 0x01, 0x09, 0x05, 0xA1, 0x01,
 
@@ -162,6 +247,17 @@ void classic_hid_init(
 ) {
     s_output_callback = output_callback;
     s_connection_callback = connection_callback;
+
+    ESP_ERROR_CHECK(esp_bt_gap_register_callback(classic_gap_event_callback));
+
+    esp_bt_pin_code_t ignored_pin = {0};
+    ESP_ERROR_CHECK(
+        esp_bt_gap_set_pin(
+            ESP_BT_PIN_TYPE_VARIABLE,
+            0,
+            ignored_pin
+        )
+    );
 
     ESP_ERROR_CHECK(esp_bt_gap_set_device_name(s_hid_config.device_name));
 
