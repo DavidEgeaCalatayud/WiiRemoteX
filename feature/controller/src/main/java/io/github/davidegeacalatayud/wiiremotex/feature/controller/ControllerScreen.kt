@@ -44,6 +44,7 @@ fun ControllerScreen(
     lastError: String?,
     onStartHid: () -> Unit,
     onMakeDiscoverable: () -> Unit,
+    onStopHid: () -> Unit,
     onButtonChanged: (WiiButton, Boolean) -> Unit,
 ) {
     Column(
@@ -72,6 +73,7 @@ fun ControllerScreen(
             lastError = lastError,
             onStartHid = onStartHid,
             onMakeDiscoverable = onMakeDiscoverable,
+            onStopHid = onStopHid,
         )
 
         Text(
@@ -121,6 +123,7 @@ private fun ConnectionCard(
     lastError: String?,
     onStartHid: () -> Unit,
     onMakeDiscoverable: () -> Unit,
+    onStopHid: () -> Unit,
 ) {
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(
@@ -144,6 +147,12 @@ private fun ConnectionCard(
                 style = MaterialTheme.typography.bodyMedium,
             )
 
+            Text(
+                text = "Battery: ${batteryPercent(wiimoteState)}% · Wii byte 0x" +
+                    wiimoteState.batteryLevel.toString(16).uppercase().padStart(2, '0'),
+                style = MaterialTheme.typography.bodyMedium,
+            )
+
             if (lastError != null) {
                 Text(
                     text = lastError,
@@ -152,12 +161,18 @@ private fun ConnectionCard(
                 )
             }
 
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
                 Button(onClick = onStartHid) {
                     Text("Start HID")
                 }
                 Button(onClick = onMakeDiscoverable) {
                     Text("Visible 5 min")
+                }
+                Button(onClick = onStopHid) {
+                    Text("Stop")
                 }
             }
         }
@@ -258,3 +273,6 @@ private fun ledText(state: WiimoteState): String {
         if (enabled) "${index + 1}●" else "${index + 1}○"
     }.joinToString("  ")
 }
+
+private fun batteryPercent(state: WiimoteState): Int =
+    ((state.batteryLevel.coerceIn(0, 0xFF) / 255.0) * 100.0).toInt()
