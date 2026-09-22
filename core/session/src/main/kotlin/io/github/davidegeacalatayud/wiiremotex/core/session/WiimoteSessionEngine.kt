@@ -1,12 +1,15 @@
 package io.github.davidegeacalatayud.wiiremotex.core.session
 
+import io.github.davidegeacalatayud.wiiremotex.core.model.ExtensionState
+import io.github.davidegeacalatayud.wiiremotex.core.model.InfraredState
+import io.github.davidegeacalatayud.wiiremotex.core.model.MotionState
 import io.github.davidegeacalatayud.wiiremotex.core.model.WiiButton
 import io.github.davidegeacalatayud.wiiremotex.core.model.WiimoteState
-import io.github.davidegeacalatayud.wiiremotex.core.protocol.CoreButtonsReportEncoder
 import io.github.davidegeacalatayud.wiiremotex.core.protocol.HidInputReport
 import io.github.davidegeacalatayud.wiiremotex.core.protocol.HostCommand
 import io.github.davidegeacalatayud.wiiremotex.core.protocol.HostCommandDecoder
 import io.github.davidegeacalatayud.wiiremotex.core.protocol.StatusReportEncoder
+import io.github.davidegeacalatayud.wiiremotex.core.protocol.WiimoteDataReportEncoder
 
 sealed interface WiimoteEffect {
     data class SendReport(val report: HidInputReport) : WiimoteEffect
@@ -19,7 +22,7 @@ data class SessionResult(
 
 class WiimoteSessionEngine(
     initialState: WiimoteState = WiimoteState(),
-    private val buttonsEncoder: CoreButtonsReportEncoder = CoreButtonsReportEncoder(),
+    private val dataEncoder: WiimoteDataReportEncoder = WiimoteDataReportEncoder(),
     private val statusEncoder: StatusReportEncoder = StatusReportEncoder(),
     private val decoder: HostCommandDecoder = HostCommandDecoder(),
 ) {
@@ -30,20 +33,47 @@ class WiimoteSessionEngine(
         val buttons = state.pressedButtons.toMutableSet().apply {
             if (pressed) add(button) else remove(button)
         }
-        state = state.copy(pressedButtons = buttons)
 
-        return SessionResult(
-            state = state,
-            effects = listOf(
-                WiimoteEffect.SendReport(buttonsEncoder.encode(state)),
-            ),
-        )
+        state = state.copy(pressedButtons = buttons)
+        return emitCurrentDataReport()
     }
 
     fun setBatteryLevel(level: Int): WiimoteState {
         state = state.copy(batteryLevel = level.coerceIn(0, 0xFF))
         return state
     }
+
+    fun setMotion(
+        motion: MotionState,
+        emitReport: Boolean = true,
+    ): SessionResult {
+        state = state.copy(motion = motion)
+        return if (emitReport) emitCurrentDataReport() else SessionResult(state)
+    }
+
+    fun setInfrared(
+        infrared: InfraredState,
+        emitReport: Boolean = true,
+    ): SessionResult {
+        state = state.copy(infrared = infrared)
+        return if (emitReport) emitCurrentDataReport() else SessionResult(state)
+    }
+
+    fun setExtension(
+        extension: ExtensionState,
+        emitReport: Boolean = true,
+    ): SessionResult {
+        state = state.copy(extension = extension)
+        return if (emitReport) emitCurrentDataReport() else SessionResult(state)
+    }
+
+    fun emitCurrentDataReport(): SessionResult =
+        SessionResult(
+            state = state,
+            effects = listOf(
+                WiimoteEffect.SendReport(dataEncoder.encode(state)),
+            ),
+        )
 
     fun onHostReport(reportId: Int, payload: ByteArray): SessionResult {
         val effects = when (val command = decoder.decode(reportId, payload)) {
