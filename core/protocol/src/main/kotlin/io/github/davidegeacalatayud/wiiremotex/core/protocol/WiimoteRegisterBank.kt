@@ -72,6 +72,10 @@ class WiimoteRegisterBank(
         val normalized = address and 0xFFFFFF
 
         if (normalized == MOTION_PLUS_ACTIVATION_REGISTER && data.isNotEmpty()) {
+            if (!state.motionPlus.present) {
+                return RegisterWriteResult(success = false)
+            }
+
             return when (data[0].toInt() and 0xFF) {
                 0x04, 0x05, 0x07 -> RegisterWriteResult(
                     success = true,
