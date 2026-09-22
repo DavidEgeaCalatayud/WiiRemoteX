@@ -4,6 +4,7 @@ import android.app.Application
 import android.content.Intent
 import androidx.lifecycle.AndroidViewModel
 import io.github.davidegeacalatayud.wiiremotex.core.model.ExtensionType
+import io.github.davidegeacalatayud.wiiremotex.core.model.PointerMode
 import io.github.davidegeacalatayud.wiiremotex.core.model.WiiButton
 import kotlinx.coroutines.flow.StateFlow
 
@@ -35,6 +36,14 @@ class WiiRemoteViewModel(
 
     fun calibratePointer() {
         runtime.calibratePointer()
+    }
+
+    fun setPointerMode(mode: PointerMode) {
+        runtime.setPointerMode(mode)
+    }
+
+    fun setTouchPointer(x: Float, y: Float) {
+        runtime.setTouchPointer(x, y)
     }
 
     fun selectExtension(type: ExtensionType) {
