@@ -66,7 +66,7 @@ V1.0  Polished Android product
 
 ## Build
 
-JDK 17, AGP 9.4.0, Gradle 9.6.0, compileSdk 37.
+JDK 17, AGP 9.4.0, Gradle 9.6.0, compileSdk 36.
 
 ```bash
 gradle :core:protocol:test :core:session:test :app:assembleDebug
