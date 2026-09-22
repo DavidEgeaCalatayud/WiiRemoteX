@@ -244,7 +244,10 @@ private fun IrPointerCard(
             ) {
                 Column {
                     Text("Virtual IR pointer", fontWeight = FontWeight.SemiBold)
-                    Text("Touch/drag trackpad → two virtual IR dots", style = MaterialTheme.typography.bodySmall)
+                    Text(
+                        "Mode: ${if (enabled) "enabled" else "off"}",
+                        style = MaterialTheme.typography.bodySmall,
+                    )
                 }
                 Switch(checked = enabled, onCheckedChange = onEnabled)
             }
@@ -365,6 +368,11 @@ private fun NunchukCard(
             }
 
             Text(
+                text = "Initialized: ${state.nunchuk.initialized} · " +
+                    "plaintext: ${state.nunchuk.encryptionDisabled}",
+                style = MaterialTheme.typography.bodySmall,
+            )
+            Text(
                 text = "Original six-byte Nunchuk extension payload.",
                 style = MaterialTheme.typography.bodySmall,
             )
@@ -386,7 +394,8 @@ private fun MotionPlusCard(
             Column(modifier = Modifier.weight(1f)) {
                 Text("MotionPlus emulation", fontWeight = FontWeight.SemiBold)
                 Text(
-                    "Present: ${state.motionPlus.present} · Active by Wii: ${state.motionPlus.active}\n" +
+                    "Present: ${state.motionPlus.present} · Init: ${state.motionPlus.initialized} · " +
+                        "Active: ${state.motionPlus.active}\n" +
                         "Android gyroscope → six-byte MotionPlus payload.",
                     style = MaterialTheme.typography.bodySmall,
                 )
