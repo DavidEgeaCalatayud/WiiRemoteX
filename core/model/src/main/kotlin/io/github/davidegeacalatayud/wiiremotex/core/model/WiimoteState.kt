@@ -86,6 +86,7 @@ data class WiimoteState(
     val leds: PlayerLeds = PlayerLeds(),
     val rumbleEnabled: Boolean = false,
     val reportMode: Int = 0x30,
+    val dataReportingEnabled: Boolean = true,
     val continuousReporting: Boolean = false,
     val batteryLevel: Int = 0xC0,
     val motion: MotionState = MotionState(),
