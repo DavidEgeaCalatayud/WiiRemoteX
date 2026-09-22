@@ -51,17 +51,42 @@ The first success criterion is deliberately small: **press A on the phone and na
 
 See `docs/architecture/ARCHITECTURE.md`.
 
+## Current development state
+
+### 0.2.0-alpha
+
+Implemented in software:
+
+- core buttons and dynamic Wii data report modes
+- Android accelerometer mapped to Wiimote acceleration values
+- Android gyroscope mapped to MotionPlus raw values
+- virtual IR pointer with extended/basic IR payloads
+- virtual Nunchuk stick + C/Z + accelerometer payload
+- MotionPlus six-byte payload
+- report modes 0x30, 0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37 and 0x3D
+- host IR enable commands
+- memory/register read/write command decoding
+- input reports 0x21 and 0x22 for register traffic
+- Nunchuk and MotionPlus identification registers
+- foreground HID runtime, battery, rumble and diagnostics
+
+Still hardware-gated:
+
+- proving stock Android pairs successfully with a real Wii
+- validating sensor axis/sign calibration against real games
+- validating IR geometry against Wii cursor behavior
+- MotionPlus calibration/pass-through edge cases
+- Nunchuk/MotionPlus initialization compatibility across games
+- interleaved IR reports 0x3E/0x3F
+
 ## Roadmap
 
 ```text
-V0.1  Bluetooth HID + A/B on a real Wii
-V0.2  All core buttons + robust reconnect
-V0.3  Accelerometer
-V0.4  Rumble + player LEDs + battery/status
-V0.5  Virtual IR pointer (motion + touchpad)
-V0.6  Virtual Nunchuk
-V0.7  MotionPlus
-V1.0  Polished Android product
+0.1.x  Bluetooth HID PoC
+0.2.x  Motion / IR / Nunchuk / MotionPlus emulation
+0.3.x  Hardware calibration + game compatibility
+0.4.x  Reconnection + protocol hardening
+1.0    Polished Android product
 ```
 
 ## Build
