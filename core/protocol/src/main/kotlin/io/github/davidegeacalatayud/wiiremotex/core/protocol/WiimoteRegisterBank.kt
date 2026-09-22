@@ -254,10 +254,7 @@ class WiimoteRegisterBank(
             0x00,
             0xA4.toByte(),
             0x20,
-            when {
-                state.motionPlus.passThroughNunchuk -> 0x05
-                else -> 0x04
-            },
+            state.motionPlus.activationMode.coerceIn(0, 0xFF).toByte(),
             0x05,
         )
 
