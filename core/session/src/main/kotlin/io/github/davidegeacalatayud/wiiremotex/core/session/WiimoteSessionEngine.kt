@@ -12,6 +12,7 @@ import io.github.davidegeacalatayud.wiiremotex.core.protocol.HostCommand
 import io.github.davidegeacalatayud.wiiremotex.core.protocol.HostCommandDecoder
 import io.github.davidegeacalatayud.wiiremotex.core.protocol.MemoryReportEncoder
 import io.github.davidegeacalatayud.wiiremotex.core.protocol.StatusReportEncoder
+import io.github.davidegeacalatayud.wiiremotex.core.protocol.WiimoteEeprom
 import io.github.davidegeacalatayud.wiiremotex.core.protocol.WiimoteRegisterBank
 import io.github.davidegeacalatayud.wiiremotex.core.protocol.WiimoteDataReportEncoder
 
@@ -30,6 +31,7 @@ class WiimoteSessionEngine(
     private val statusEncoder: StatusReportEncoder = StatusReportEncoder(),
     private val memoryEncoder: MemoryReportEncoder = MemoryReportEncoder(),
     private val registerBank: WiimoteRegisterBank = WiimoteRegisterBank(),
+    private val eeprom: WiimoteEeprom = WiimoteEeprom(),
     private val decoder: HostCommandDecoder = HostCommandDecoder(),
 ) {
     private var nextInterleavedReportId: Int = 0x3E
@@ -160,83 +162,120 @@ class WiimoteSessionEngine(
 
             is HostCommand.WriteMemory -> {
                 state = state.copy(rumbleEnabled = command.rumbleEnabled)
-                val result = registerBank.write(
-                    state = state,
-                    address = command.address,
-                    data = command.data,
-                )
 
-                if (result.activateMotionPlus) {
-                    state = state.copy(
-                        motionPlus = state.motionPlus.copy(
-                            present = true,
-                            active = true,
-                            passThroughNunchuk = result.motionPlusMode == 0x05,
-                            extensionConnected = state.nunchuk.connected,
-                        ),
+                if (!command.registerSpace) {
+                    val success = eeprom.write(
+                        address = command.address,
+                        data = command.data,
                     )
-                }
 
-                if (result.deactivateMotionPlus) {
-                    state = state.copy(
-                        motionPlus = state.motionPlus.copy(
-                            active = false,
-                            passThroughNunchuk = false,
-                        ),
-                    )
-                }
-
-                buildList {
-                    add(
+                    listOf(
                         WiimoteEffect.SendReport(
                             memoryEncoder.encodeAck(
                                 state = state,
                                 outputReportId = 0x16,
-                                error = if (result.success) 0x00 else 0x08,
+                                error = if (success) 0x00 else 0x08,
                             ),
                         ),
                     )
+                } else {
+                    val result = registerBank.write(
+                        state = state,
+                        address = command.address,
+                        data = command.data,
+                    )
 
-                    if (result.activateMotionPlus || result.deactivateMotionPlus) {
-                        add(
-                            WiimoteEffect.SendReport(
-                                statusEncoder.encode(state),
+                    if (result.activateMotionPlus) {
+                        state = state.copy(
+                            motionPlus = state.motionPlus.copy(
+                                present = true,
+                                active = true,
+                                passThroughNunchuk = result.motionPlusMode == 0x05,
+                                extensionConnected = state.nunchuk.connected,
                             ),
                         )
+                    }
+
+                    if (result.deactivateMotionPlus) {
+                        state = state.copy(
+                            motionPlus = state.motionPlus.copy(
+                                active = false,
+                                passThroughNunchuk = false,
+                            ),
+                        )
+                    }
+
+                    buildList {
+                        add(
+                            WiimoteEffect.SendReport(
+                                memoryEncoder.encodeAck(
+                                    state = state,
+                                    outputReportId = 0x16,
+                                    error = if (result.success) 0x00 else 0x08,
+                                ),
+                            ),
+                        )
+
+                        if (result.activateMotionPlus || result.deactivateMotionPlus) {
+                            add(
+                                WiimoteEffect.SendReport(
+                                    statusEncoder.encode(state),
+                                ),
+                            )
+                        }
                     }
                 }
             }
 
             is HostCommand.ReadMemory -> {
                 state = state.copy(rumbleEnabled = command.rumbleEnabled)
-                val data = registerBank.read(
-                    state = state,
-                    address = command.address,
-                    size = command.size,
-                )
 
-                if (data == null) {
-                    listOf(
-                        WiimoteEffect.SendReport(
+                val requestedSize = command.size.coerceAtLeast(1)
+                var offset = 0
+                val reports = mutableListOf<WiimoteEffect>()
+
+                while (offset < requestedSize) {
+                    val chunkSize = minOf(16, requestedSize - offset)
+                    val address = command.address + offset
+
+                    val data = if (command.registerSpace) {
+                        registerBank.read(
+                            state = state,
+                            address = address,
+                            size = chunkSize,
+                        )
+                    } else {
+                        eeprom.read(
+                            address = address,
+                            size = chunkSize,
+                        )
+                    }
+
+                    if (data == null || data.isEmpty()) {
+                        reports += WiimoteEffect.SendReport(
                             memoryEncoder.encodeRead(
                                 state = state,
-                                address = command.address,
+                                address = address,
                                 data = byteArrayOf(0x00),
                                 error = 0x07,
                             ),
+                        )
+                        break
+                    }
+
+                    reports += WiimoteEffect.SendReport(
+                        memoryEncoder.encodeRead(
+                            state = state,
+                            address = address,
+                            data = data,
                         ),
                     )
-                } else {
-                    listOf(
-                        WiimoteEffect.SendReport(
-                            memoryEncoder.encodeRead(
-                                state = state,
-                                address = command.address,
-                                data = data,
-                            ),
-                        ),
-                    )
+
+                    offset += data.size
+                    if (data.size < chunkSize) break
                 }
+
+                reports
             }
 
             is HostCommand.Unknown -> emptyList()
