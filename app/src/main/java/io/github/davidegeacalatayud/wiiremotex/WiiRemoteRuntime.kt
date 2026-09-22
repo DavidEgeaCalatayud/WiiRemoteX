@@ -26,6 +26,7 @@ import java.util.concurrent.Executors
 import java.util.concurrent.ScheduledFuture
 import java.util.concurrent.TimeUnit
 import kotlin.math.PI
+import kotlin.math.abs
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -72,6 +73,8 @@ class WiiRemoteRuntime(
     private var latestOrientation: OrientationSample? = null
     private var pointerCenterYaw: Float? = null
     private var pointerCenterPitch: Float? = null
+    private var smoothedPointerX = 0.5f
+    private var smoothedPointerY = 0.5f
 
     private val motionSource = AndroidMotionSource(
         context = application,
@@ -275,7 +278,10 @@ class WiiRemoteRuntime(
             pointerCenterYaw = orientation.yawRadians
             pointerCenterPitch = orientation.pitchRadians
         }
+        smoothedPointerX = 0.5f
+        smoothedPointerY = 0.5f
         motionSource.calibrateGyroscope()
+        setIrPointer(0.5f, 0.5f, enabled = true)
         log("SYS", "Motion Pointer and gyro recentered")
     }
 
@@ -398,14 +404,27 @@ class WiiRemoteRuntime(
         val yawDelta = wrapRadians(orientation.yawRadians - centerYaw)
         val pitchDelta = orientation.pitchRadians - centerPitch
 
-        val normalizedX =
+        val targetX =
             (0.5f - yawDelta / HORIZONTAL_POINTER_RANGE_RAD).coerceIn(0f, 1f)
-        val normalizedY =
+        val targetY =
             (0.5f + pitchDelta / VERTICAL_POINTER_RANGE_RAD).coerceIn(0f, 1f)
 
+        val deltaX = targetX - smoothedPointerX
+        val deltaY = targetY - smoothedPointerY
+
+        if (
+            abs(deltaX) < POINTER_DEAD_ZONE &&
+            abs(deltaY) < POINTER_DEAD_ZONE
+        ) {
+            return
+        }
+
+        smoothedPointerX += deltaX * POINTER_SMOOTHING_ALPHA
+        smoothedPointerY += deltaY * POINTER_SMOOTHING_ALPHA
+
         setIrPointer(
-            normalizedX = normalizedX,
-            normalizedY = normalizedY,
+            normalizedX = smoothedPointerX,
+            normalizedY = smoothedPointerY,
             enabled = true,
         )
     }
@@ -525,6 +544,9 @@ class WiiRemoteRuntime(
         const val NUNCHUK_X_MAX = 228
         const val NUNCHUK_Y_MIN = 27
         const val NUNCHUK_Y_MAX = 220
+
+        const val POINTER_SMOOTHING_ALPHA = 0.22f
+        const val POINTER_DEAD_ZONE = 0.0025f
 
         val HORIZONTAL_POINTER_RANGE_RAD: Float = Math.toRadians(60.0).toFloat()
         val VERTICAL_POINTER_RANGE_RAD: Float = Math.toRadians(45.0).toFloat()
