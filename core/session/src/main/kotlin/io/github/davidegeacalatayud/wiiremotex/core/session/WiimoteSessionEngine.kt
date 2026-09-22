@@ -152,6 +152,7 @@ class WiimoteSessionEngine(
             motionPlus.copy(
                 initialized = false,
                 active = false,
+                activationMode = 0x04,
                 passThroughNunchuk = false,
             )
         }
@@ -267,6 +268,7 @@ class WiimoteSessionEngine(
                             motionPlus = state.motionPlus.copy(
                                 present = true,
                                 active = true,
+                                activationMode = result.motionPlusMode ?: 0x04,
                                 passThroughNunchuk = result.motionPlusMode == 0x05,
                                 extensionConnected = state.nunchuk.connected,
                             ),
@@ -277,6 +279,7 @@ class WiimoteSessionEngine(
                         state = state.copy(
                             motionPlus = state.motionPlus.copy(
                                 active = false,
+                                activationMode = 0x04,
                                 passThroughNunchuk = false,
                             ),
                         )
