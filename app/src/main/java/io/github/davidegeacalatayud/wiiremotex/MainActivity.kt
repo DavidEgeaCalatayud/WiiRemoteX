@@ -69,6 +69,10 @@ class MainActivity : ComponentActivity() {
                         onShareDiagnostics = {
                             shareDiagnostics(state)
                         },
+                        onShareHardwareTrace = {
+                            shareHardwareTrace(viewModel.exportHardwareTraceJson())
+                        },
+                        onClearHardwareTrace = viewModel::clearHardwareTrace,
                         onButtonChanged = viewModel::onButtonChanged,
                         onIrPointer = viewModel::setIrPointer,
                         onIrEnabled = viewModel::setIrEnabled,
@@ -152,6 +156,18 @@ class MainActivity : ComponentActivity() {
 
         startActivity(
             Intent.createChooser(intent, "Share WiiRemoteX diagnostics"),
+        )
+    }
+
+    private fun shareHardwareTrace(json: String) {
+        val intent = Intent(Intent.ACTION_SEND).apply {
+            type = "application/json"
+            putExtra(Intent.EXTRA_SUBJECT, "WiiRemoteX hardware trace")
+            putExtra(Intent.EXTRA_TEXT, json)
+        }
+
+        startActivity(
+            Intent.createChooser(intent, "Share WiiRemoteX hardware trace"),
         )
     }
 
