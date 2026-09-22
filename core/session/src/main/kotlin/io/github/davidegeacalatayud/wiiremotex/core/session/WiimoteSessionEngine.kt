@@ -155,7 +155,8 @@ class WiimoteSessionEngine(
                 if (result.activateMotionPlus) {
                     state = state.copy(
                         motionPlus = state.motionPlus.copy(
-                            enabled = true,
+                            present = true,
+                            active = true,
                             extensionConnected = state.nunchuk.connected,
                         ),
                     )
@@ -163,7 +164,7 @@ class WiimoteSessionEngine(
 
                 if (result.deactivateMotionPlus) {
                     state = state.copy(
-                        motionPlus = state.motionPlus.copy(enabled = false),
+                        motionPlus = state.motionPlus.copy(active = false),
                     )
                 }
 
