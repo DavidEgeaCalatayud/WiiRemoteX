@@ -34,4 +34,19 @@ class VirtualIrCameraTest {
 
         assertTrue(state.points.none { it.visible })
     }
+    @Test
+    fun `touch pointer projects normalized center into visible IR pair`() {
+        val camera = VirtualIrCamera()
+
+        val state = camera.projectTouch(
+            normalizedX = 0.5f,
+            normalizedY = 0.5f,
+            enabled = true,
+        )
+
+        assertTrue(state.points[0].visible)
+        assertTrue(state.points[1].visible)
+        assertEquals(384, state.points[0].y)
+        assertEquals(384, state.points[1].y)
+    }
 }
