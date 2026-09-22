@@ -28,10 +28,7 @@ class MainActivity : ComponentActivity() {
         val granted = permissions.values.all { it }
         val action = afterPermissionGranted
         afterPermissionGranted = null
-
-        if (granted) {
-            action?.invoke()
-        }
+        if (granted) action?.invoke()
     }
 
     private val discoverableLauncher = registerForActivityResult(
@@ -55,6 +52,15 @@ class MainActivity : ComponentActivity() {
                             "${entry.timestamp} ${entry.direction}  ${entry.message}"
                         },
                         lastError = state.lastError,
+                        pointerCalibrated = state.pointerCalibrated,
+                        sensorAccelerometer = state.sensors.accelerometer,
+                        sensorGyroscope = state.sensors.gyroscope,
+                        sensorRotationVector = state.sensors.rotationVector,
+                        onCalibratePointer = viewModel::calibratePointer,
+                        onSelectExtension = viewModel::selectExtension,
+                        onNunchukStick = viewModel::setNunchukStick,
+                        onNunchukCChanged = viewModel::setNunchukCPressed,
+                        onNunchukZChanged = viewModel::setNunchukZPressed,
                         onStartHid = {
                             withBluetoothPermissions {
                                 viewModel.startHid()
@@ -109,6 +115,9 @@ class MainActivity : ComponentActivity() {
             appendLine("Continuous reporting: ${state.wiimote.continuousReporting}")
             appendLine("Rumble: ${state.wiimote.rumbleEnabled}")
             appendLine("Battery byte: 0x${state.wiimote.batteryLevel.toString(16).uppercase().padStart(2, '0')}")
+            appendLine("Pointer calibrated: ${state.pointerCalibrated}")
+            appendLine("Sensors: accel=${state.sensors.accelerometer} gyro=${state.sensors.gyroscope} rotation=${state.sensors.rotationVector}")
+            appendLine("Extension: ${state.wiimote.extension}")
             appendLine()
             appendLine("Events:")
             state.diagnostics.forEach { entry ->
@@ -122,9 +131,7 @@ class MainActivity : ComponentActivity() {
             putExtra(Intent.EXTRA_TEXT, diagnostics)
         }
 
-        startActivity(
-            Intent.createChooser(intent, "Share WiiRemoteX diagnostics"),
-        )
+        startActivity(Intent.createChooser(intent, "Share WiiRemoteX diagnostics"))
     }
 
     private fun requestDiscoverable() {
