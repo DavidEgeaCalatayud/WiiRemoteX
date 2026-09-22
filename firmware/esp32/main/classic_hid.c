@@ -250,6 +250,15 @@ void classic_hid_init(
 
     ESP_ERROR_CHECK(esp_bt_gap_register_callback(classic_gap_event_callback));
 
+    esp_bt_io_cap_t io_capability = ESP_BT_IO_CAP_NONE;
+    ESP_ERROR_CHECK(
+        esp_bt_gap_set_security_param(
+            ESP_BT_SP_IOCAP_MODE,
+            &io_capability,
+            sizeof(io_capability)
+        )
+    );
+
     esp_bt_pin_code_t ignored_pin = {0};
     ESP_ERROR_CHECK(
         esp_bt_gap_set_pin(
