@@ -1,6 +1,6 @@
 # WiiRemoteX
 
-**WiiRemoteX** is an experimental multiplatform Wii Remote emulation project. The same protocol/session engine can drive a **real Nintendo Wii** from Android directly over Bluetooth HID, or from iPhone through a small ESP32 Bluetooth bridge.
+**WiiRemoteX** is an experimental multiplatform Wii Remote emulation project. One Kotlin Multiplatform protocol/session core can drive a **real Nintendo Wii** from Android directly over Bluetooth HID, or from Android/iPhone through a small ESP32 Bluetooth bridge.
 
 > Status: **0.5.x hardware-validation + multiplatform foundation**. Android, the shared Kotlin engine, iOS frontend and ESP32 transport are developed independently but speak the same Wii protocol model.
 
@@ -8,21 +8,22 @@
 
 ```text
 Android UI/sensors ───────────────┐
-                                 │
-iOS SwiftUI/CoreMotion ──┐       │
-                         v       v
-                 WiimoteSessionEngine
-                         │
-                 Wii protocol reports
-                         │
-                 ┌───────┴─────────┐
-                 │                 │
-        Android HID          iPhone BLE
-                 │                 │
-                 │              ESP32
-                 │        Bluetooth Classic HID
-                 └───────┬─────────┘
-                         v
+                                  │
+iOS SwiftUI/CoreMotion ──┐        │
+                         v        v
+                  WiimoteSessionEngine
+                          │
+                   Wii HID reports
+                          │
+          ┌───────────────┼────────────────┐
+          │               │                │
+ Android direct HID   Android BLE       iPhone BLE
+          │               │                │
+          │               └──────┬─────────┘
+          │                    ESP32
+          │             Bluetooth Classic HID
+          └───────────────┬────────┘
+                          v
                     Nintendo Wii
 ```
 
@@ -46,13 +47,16 @@ The first success criterion is deliberately small: **press A on the phone and na
 
 ## Modules
 
-- `:core:model` — Android-free domain state.
-- `:core:protocol` — HID reports, bitmasks, host decoder and Wii HID descriptor.
-- `:core:session` — state machine/reducer and transport port.
-- `:platform:bluetooth` — Android `BluetoothHidDevice` adapter.
-- `:feature:controller` — Compose controller UI.
-- `:app` — Android entry point.
-- `:shared` — Kotlin Multiplatform facade compiling the same model/protocol/session source for JVM and iOS.
+- `:core:model` — Kotlin Multiplatform Wii Remote domain state.
+- `:core:protocol` — multiplatform HID reports, bridge framing, host decoder and Wii HID descriptor.
+- `:core:session` — multiplatform state machine/reducer and transport port.
+- `:core:trace` — shared hardware-trace schema/state formatting.
+- `:transports:android-hid` — direct Android `BluetoothHidDevice` adapter.
+- `:transports:esp32-ble` — Android BLE fallback using the same ESP32 bridge protocol as iOS.
+- `:platform:sensors` — Android sensor/calibration adapter.
+- `:feature:controller` — Compose controller UI and transport selector.
+- `:app` — Android runtime/entry point.
+- `:shared` — thin Kotlin Multiplatform facade exported as `WiiRemoteShared.framework` for Swift.
 - `iosApp/` — native SwiftUI + CoreMotion frontend and CoreBluetooth ESP32 transport.
 - `firmware/esp32/` — BLE ↔ Bluetooth Classic HID bridge firmware; no Wii protocol state lives here.
 
@@ -110,7 +114,7 @@ Still hardware-gated:
 0.4.x  Protocol fidelity and extension hardening
 0.5.x  Hardware validation + measured behavioural diff
 0.6.x  Compatibility fixes + reconnect hardening
-0.7.x  iOS + ESP32 hardware validation
+0.7.x  Android/iOS + ESP32 hardware validation
 1.0    Polished multiplatform product
 ```
 
@@ -119,7 +123,7 @@ Still hardware-gated:
 JDK 17, AGP 9.4.0, Gradle 9.6.0, compileSdk 36.
 
 ```bash
-gradle :core:protocol:test :core:session:test :shared:jvmTest :app:assembleDebug
+gradle :core:protocol:jvmTest :core:session:jvmTest :core:trace:jvmTest :shared:jvmTest :app:assembleDebug
 ```
 
 ## Legal
