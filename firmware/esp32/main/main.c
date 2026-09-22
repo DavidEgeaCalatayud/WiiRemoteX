@@ -41,8 +41,8 @@ static void send_bridge_message(
             return;
         }
 
-        if (!ble_bridge_notify_packet(packet, packet_length)) {
-            ESP_LOGD(TAG, "BLE packet not delivered; iPhone is not subscribed");
+        if (!ble_bridge_send_packet(packet, packet_length)) {
+            ESP_LOGW(TAG, "BLE packet could not be queued for iPhone");
             return;
         }
     }
