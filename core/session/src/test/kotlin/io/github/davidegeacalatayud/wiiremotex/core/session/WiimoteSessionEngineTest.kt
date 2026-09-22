@@ -78,15 +78,24 @@ class WiimoteSessionEngineTest {
     }
 
     @Test
-    fun `IR enable host command updates state`() {
+    fun `IR requires both pixel clock and logic enable reports`() {
         val engine = WiimoteSessionEngine()
 
-        val result = engine.onHostReport(
+        val pixelClock = engine.onHostReport(
             0x13,
             byteArrayOf(0x04),
         )
 
-        assertTrue(result.state.infrared.enabled)
+        assertTrue(pixelClock.state.infrared.pixelClockEnabled)
+        assertEquals(false, pixelClock.state.infrared.enabled)
+
+        val logic = engine.onHostReport(
+            0x1A,
+            byteArrayOf(0x04),
+        )
+
+        assertTrue(logic.state.infrared.logicEnabled)
+        assertTrue(logic.state.infrared.enabled)
     }
     @Test
     fun `continuous reporting suppresses event driven motion and emits on scheduler tick`() {
@@ -182,5 +191,95 @@ class WiimoteSessionEngineTest {
             byteArrayOf(0x12, 0x34, 0x56),
             effect.report.payload.copyOfRange(5, 8),
         )
+    }
+    @Test
+    fun `Nunchuk connection emits status and pauses data reporting until new 0x12`() {
+        val engine = WiimoteSessionEngine()
+
+        val connected = engine.setNunchuk(
+            io.github.davidegeacalatayud.wiiremotex.core.model.NunchukState(
+                connected = true,
+            ),
+        )
+
+        val status = assertIs<WiimoteEffect.SendReport>(connected.effects.single())
+        assertEquals(0x20, status.report.reportId)
+        assertEquals(false, connected.state.dataReportingEnabled)
+
+        val suppressed = engine.setButton(WiiButton.A, true)
+        assertTrue(suppressed.effects.isEmpty())
+
+        val resumed = engine.onHostReport(
+            0x12,
+            byteArrayOf(0x00, 0x32),
+        )
+
+        assertTrue(resumed.state.dataReportingEnabled)
+        assertEquals(0x32, resumed.state.reportMode)
+    }
+
+    @Test
+    fun `Nunchuk new initialization sequence updates session state`() {
+        val engine = WiimoteSessionEngine()
+        engine.setNunchuk(
+            io.github.davidegeacalatayud.wiiremotex.core.model.NunchukState(
+                connected = true,
+            ),
+        )
+
+        val init = ByteArray(21)
+        init[0] = 0x04
+        init[1] = 0xA4.toByte()
+        init[2] = 0x00
+        init[3] = 0xF0.toByte()
+        init[4] = 0x01
+        init[5] = 0x55
+        val afterInit = engine.onHostReport(0x16, init)
+
+        assertTrue(afterInit.state.nunchuk.initialized)
+
+        val disableEncryption = ByteArray(21)
+        disableEncryption[0] = 0x04
+        disableEncryption[1] = 0xA4.toByte()
+        disableEncryption[2] = 0x00
+        disableEncryption[3] = 0xFB.toByte()
+        disableEncryption[4] = 0x01
+        disableEncryption[5] = 0x00
+        val afterDisable = engine.onHostReport(0x16, disableEncryption)
+
+        assertTrue(afterDisable.state.nunchuk.encryptionDisabled)
+    }
+
+    @Test
+    fun `IR register initialization selects extended mode and marks camera configured`() {
+        val engine = WiimoteSessionEngine()
+
+        engine.onHostReport(0x13, byteArrayOf(0x04))
+        engine.onHostReport(0x1A, byteArrayOf(0x04))
+
+        val mode = ByteArray(21)
+        mode[0] = 0x04
+        mode[1] = 0xB0.toByte()
+        mode[2] = 0x00
+        mode[3] = 0x33
+        mode[4] = 0x01
+        mode[5] = 0x03
+        val afterMode = engine.onHostReport(0x16, mode)
+
+        assertEquals(
+            io.github.davidegeacalatayud.wiiremotex.core.model.InfraredMode.EXTENDED,
+            afterMode.state.infrared.mode,
+        )
+
+        val finalControl = ByteArray(21)
+        finalControl[0] = 0x04
+        finalControl[1] = 0xB0.toByte()
+        finalControl[2] = 0x00
+        finalControl[3] = 0x30
+        finalControl[4] = 0x01
+        finalControl[5] = 0x08
+        val configured = engine.onHostReport(0x16, finalControl)
+
+        assertTrue(configured.state.infrared.configured)
     }
 }
