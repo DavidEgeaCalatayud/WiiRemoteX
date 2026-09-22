@@ -21,6 +21,7 @@ data class MotionPlusState(
     val rollDegPerSec: Float = 0f,
     val pitchDegPerSec: Float = 0f,
     val extensionConnected: Boolean = false,
+    val active: Boolean = false,
 )
 
 sealed interface ExtensionState {
