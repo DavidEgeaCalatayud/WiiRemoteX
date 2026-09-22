@@ -44,7 +44,7 @@ class WiimoteDataReportEncoder(
         extensionBytes: Int,
     ): HidInputReport {
         val buttons = buttonsEncoder.encode(state).payload
-        val extension = encodeExtension(state).copyOf(extensionBytes)
+        val extension = encodeExtensionPayload(state).copyOf(extensionBytes)
         return HidInputReport(
             reportId = 0x32,
             payload = buttons + extension,
@@ -56,7 +56,7 @@ class WiimoteDataReportEncoder(
         extensionBytes: Int,
     ): HidInputReport {
         val base = encodeButtonsAndAccelerometer(state).payload
-        val extension = encodeExtension(state).copyOf(extensionBytes)
+        val extension = encodeExtensionPayload(state).copyOf(extensionBytes)
         return HidInputReport(
             reportId = 0x35,
             payload = base + extension,
@@ -68,7 +68,7 @@ class WiimoteDataReportEncoder(
     ): HidInputReport {
         val base = encodeButtonsAndAccelerometer(state).payload
         val ir = encodeBasicIr(state.infrared.points)
-        val extension = encodeExtension(state).copyOf(6)
+        val extension = encodeExtensionPayload(state).copyOf(6)
         return HidInputReport(
             reportId = 0x37,
             payload = base + ir + extension,
