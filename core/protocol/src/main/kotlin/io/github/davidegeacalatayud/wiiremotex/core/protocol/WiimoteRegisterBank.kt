@@ -33,6 +33,22 @@ class WiimoteRegisterBank(
     }
 
     @Synchronized
+    fun resetExtension() {
+        extensionInitialized = false
+        extensionEncryptionDisabled = false
+        extensionRegisters.fill(0)
+        NUNCHUK_ID.copyInto(extensionRegisters, destinationOffset = 0xFA)
+    }
+
+    @Synchronized
+    fun resetMotionPlus() {
+        motionPlusInitialized = false
+        motionPlusRegisters.fill(0)
+        MOTION_PLUS_INACTIVE_ID.copyInto(motionPlusRegisters, destinationOffset = 0xFA)
+        MOTION_PLUS_CALIBRATION.copyInto(motionPlusRegisters, destinationOffset = 0x20)
+    }
+
+    @Synchronized
     fun read(
         state: WiimoteState,
         address: Int,
