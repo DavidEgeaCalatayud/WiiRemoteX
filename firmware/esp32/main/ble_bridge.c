@@ -163,6 +163,16 @@ static void advance_tx_head(void) {
     s_tx_count--;
 }
 
+static size_t tx_queue_depth(void) {
+    size_t depth;
+
+    portENTER_CRITICAL(&s_tx_lock);
+    depth = s_tx_count;
+    portEXIT_CRITICAL(&s_tx_lock);
+
+    return depth;
+}
+
 static void drain_tx_queue(void) {
     for (;;) {
         bridge_tx_packet_t packet;
@@ -372,15 +382,19 @@ static void gatts_event_handler(
 
         case ESP_GATTS_CONNECT_EVT:
             reset_tx_queue();
+            portENTER_CRITICAL(&s_tx_lock);
             s_connected = true;
             s_indications_enabled = false;
             s_conn_id = param->connect.conn_id;
+            portEXIT_CRITICAL(&s_tx_lock);
             ESP_LOGI(TAG, "iPhone BLE central connected; waiting for indication subscription");
             break;
 
         case ESP_GATTS_DISCONNECT_EVT:
+            portENTER_CRITICAL(&s_tx_lock);
             s_connected = false;
             s_indications_enabled = false;
+            portEXIT_CRITICAL(&s_tx_lock);
             reset_tx_queue();
             ESP_LOGI(TAG, "iPhone BLE central disconnected");
             if (s_connection_callback != NULL) {
@@ -418,23 +432,30 @@ static void gatts_event_handler(
                 const uint16_t ccc =
                     (uint16_t)param->write.value[0] |
                     ((uint16_t)param->write.value[1] << 8);
-                const bool was_enabled = s_indications_enabled;
+                bool was_enabled;
+                bool is_enabled;
+
+                portENTER_CRITICAL(&s_tx_lock);
+                was_enabled = s_indications_enabled;
                 s_indications_enabled = (ccc & 0x0002) != 0;
+                is_enabled = s_indications_enabled;
+                portEXIT_CRITICAL(&s_tx_lock);
+
                 ESP_LOGI(
                     TAG,
                     "BLE bridge indications %s",
-                    s_indications_enabled ? "enabled" : "disabled"
+                    is_enabled ? "enabled" : "disabled"
                 );
                 send_write_response(gatts_if, param);
 
                 if (
                     s_connection_callback != NULL &&
-                    was_enabled != s_indications_enabled
+                    was_enabled != is_enabled
                 ) {
-                    s_connection_callback(s_indications_enabled);
+                    s_connection_callback(is_enabled);
                 }
 
-                if (s_indications_enabled) {
+                if (is_enabled) {
                     drain_tx_queue();
                 }
                 break;
@@ -528,7 +549,7 @@ bool ble_bridge_send_packet(
         ESP_LOGW(
             TAG,
             "BLE TX queue unavailable or full (depth=%u)",
-            (unsigned)s_tx_count
+            (unsigned)tx_queue_depth()
         );
         return false;
     }
@@ -538,5 +559,11 @@ bool ble_bridge_send_packet(
 }
 
 bool ble_bridge_connected(void) {
-    return s_connected;
+    bool connected;
+
+    portENTER_CRITICAL(&s_tx_lock);
+    connected = s_connected;
+    portEXIT_CRITICAL(&s_tx_lock);
+
+    return connected;
 }
