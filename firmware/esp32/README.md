@@ -20,6 +20,8 @@ Nintendo Wii
 
 The ESP32 does **not** implement Wii Remote state, IR, Nunchuk or MotionPlus logic. Those remain in the shared Kotlin engine. The firmware forwards input reports to the Wii and forwards Wii output reports back to the phone.
 
+The phone-to-bridge path uses ordered CoreBluetooth writes. The bridge-to-phone path uses queued **GATT indications** so host commands and bridge status messages are confirmed before the next fragment is transmitted.
+
 ## Required hardware
 
 Use an **original ESP32 with Bluetooth Classic + BLE dual-mode support**, for example an ESP32-DevKitC / ESP32-WROOM based board.
@@ -34,7 +36,7 @@ The iPhone discovers:
 - Phone -> bridge: `7C0A0002-6F4B-4A42-9D47-575258000001`
 - Bridge -> phone: `7C0A0003-6F4B-4A42-9D47-575258000001`
 
-Packets are capped at 20 bytes. The shared bridge protocol fragments larger Wii messages using a six-byte header:
+Packets are capped at 20 bytes. The shared bridge protocol fragments larger Wii messages using a six-byte header. Once iOS subscribes to the bridge-to-phone characteristic, the ESP32 sends a `BRIDGE_READY` status containing the protocol version before Wii pairing is enabled in the UI:
 
 ```text
 version
@@ -69,7 +71,7 @@ idf.py -p <SERIAL_PORT> flash monitor
 1. Power the ESP32.
 2. Open WiiRemoteX on iPhone.
 3. Tap **Connect ESP32**.
-4. Confirm `iPhone ↔ ESP32 = Connected`.
+4. Confirm `iPhone ↔ ESP32 = Connected` and `Bridge protocol = Ready v1`.
 5. Tap **Pair Wii**.
 6. Start Wii controller synchronization.
 7. Watch serial logs for the Classic HID connection.
