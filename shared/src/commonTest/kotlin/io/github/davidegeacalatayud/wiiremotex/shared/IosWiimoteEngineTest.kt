@@ -38,6 +38,51 @@ class IosWiimoteEngineTest {
     }
 
     @Test
+    fun `bridge ready status exposes protocol compatibility`() {
+        val engine = IosWiimoteEngine()
+        assertFalse(engine.bridgeReady)
+        assertFalse(engine.bridgeProtocolCompatible)
+
+        val packets = BridgeFrameCodec.encode(
+            type = BridgeMessageType.STATUS,
+            sequence = 3,
+            payload = byteArrayOf(
+                BridgeStatusCode.BRIDGE_READY.toByte(),
+                BridgeFrameCodec.VERSION.toByte(),
+            ),
+        )
+
+        packets.forEach(engine::acceptBridgePacket)
+
+        assertTrue(engine.bridgeReady)
+        assertTrue(engine.bridgeProtocolCompatible)
+        assertEquals(BridgeFrameCodec.VERSION, engine.bridgeProtocolVersion)
+        assertEquals("Ready v1", engine.bridgeProtocolStatusLabel)
+    }
+
+    @Test
+    fun `bridge error status is propagated and reset with transport session`() {
+        val engine = IosWiimoteEngine()
+
+        BridgeFrameCodec.encode(
+            type = BridgeMessageType.STATUS,
+            sequence = 4,
+            payload = byteArrayOf(
+                BridgeStatusCode.ERROR.toByte(),
+                0x2A,
+            ),
+        ).forEach(engine::acceptBridgePacket)
+
+        assertEquals(0x2A, engine.bridgeErrorCode)
+
+        engine.resetBridgeSession()
+
+        assertEquals(0, engine.bridgeErrorCode)
+        assertFalse(engine.bridgeReady)
+        assertEquals(0, engine.bridgeProtocolVersion)
+    }
+
+    @Test
     fun `Wii connection status is propagated from bridge`() {
         val engine = IosWiimoteEngine()
         val packets = BridgeFrameCodec.encode(
