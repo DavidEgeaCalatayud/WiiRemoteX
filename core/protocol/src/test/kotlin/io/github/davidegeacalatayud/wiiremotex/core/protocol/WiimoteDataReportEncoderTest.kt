@@ -115,4 +115,35 @@ class WiimoteDataReportEncoderTest {
         assertEquals(21, first.payload.size)
         assertEquals(21, second.payload.size)
     }
+    @Test
+    fun `MotionPlus Nunchuk pass-through clears type bit`() {
+        val state = WiimoteState(
+            reportMode = 0x32,
+            nunchuk = NunchukState(
+                connected = true,
+                stickX = 180,
+                stickY = 90,
+            ),
+            motionPlus = MotionPlusState(
+                present = true,
+                active = true,
+                passThroughNunchuk = true,
+                extensionConnected = true,
+            ),
+        )
+
+        val gyro = encoder.encode(
+            state = state,
+            passThroughNunchukSample = false,
+        )
+        val nunchuk = encoder.encode(
+            state = state,
+            passThroughNunchukSample = true,
+        )
+
+        assertEquals(0x02, gyro.payload[7].toInt() and 0x02)
+        assertEquals(0x00, nunchuk.payload[7].toInt() and 0x02)
+        assertEquals(180, nunchuk.payload[2].toInt() and 0xFF)
+        assertEquals(90, nunchuk.payload[3].toInt() and 0xFF)
+    }
 }
