@@ -5,7 +5,9 @@ import android.hardware.Sensor
 import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
 import android.hardware.SensorManager
+import io.github.davidegeacalatayud.wiiremotex.core.model.AxisCalibration
 import io.github.davidegeacalatayud.wiiremotex.core.model.MotionState
+import io.github.davidegeacalatayud.wiiremotex.core.model.WiimoteAccelerometerCalibration
 import kotlin.math.PI
 import kotlin.math.roundToInt
 
@@ -18,6 +20,8 @@ data class OrientationSample(
 class AndroidMotionSource(
     context: Context,
     private val listener: Listener,
+    private val accelerometerCalibration: WiimoteAccelerometerCalibration =
+        WiimoteAccelerometerCalibration.DEFAULT,
 ) : SensorEventListener {
 
     interface Listener {
@@ -38,9 +42,9 @@ class AndroidMotionSource(
         sensorManager.getDefaultSensor(Sensor.TYPE_GAME_ROTATION_VECTOR)
             ?: sensorManager.getDefaultSensor(Sensor.TYPE_ROTATION_VECTOR)
 
-    private var accelerationX = WIIMOTE_ZERO
-    private var accelerationY = WIIMOTE_ZERO
-    private var accelerationZ = WIIMOTE_ONE_G
+    private var accelerationX = accelerometerCalibration.x.zeroG
+    private var accelerationY = accelerometerCalibration.y.zeroG
+    private var accelerationZ = accelerometerCalibration.z.positiveOneG
 
     private var gyroYaw = MOTION_PLUS_ZERO
     private var gyroRoll = MOTION_PLUS_ZERO
@@ -98,9 +102,18 @@ class AndroidMotionSource(
     override fun onSensorChanged(event: SensorEvent) {
         when (event.sensor.type) {
             Sensor.TYPE_ACCELEROMETER -> {
-                accelerationX = accelerationToWiimote(event.values[0])
-                accelerationY = accelerationToWiimote(-event.values[1])
-                accelerationZ = accelerationToWiimote(event.values[2])
+                accelerationX = accelerationToWiimote(
+                    event.values[0],
+                    accelerometerCalibration.x,
+                )
+                accelerationY = accelerationToWiimote(
+                    -event.values[1],
+                    accelerometerCalibration.y,
+                )
+                accelerationZ = accelerationToWiimote(
+                    event.values[2],
+                    accelerometerCalibration.z,
+                )
             }
 
             Sensor.TYPE_GYROSCOPE -> {
@@ -160,9 +173,15 @@ class AndroidMotionSource(
         )
     }
 
-    private fun accelerationToWiimote(valueMs2: Float): Int {
+    private fun accelerationToWiimote(
+        valueMs2: Float,
+        calibration: AxisCalibration,
+    ): Int {
         val g = valueMs2 / SensorManager.GRAVITY_EARTH
-        return (WIIMOTE_ZERO + g * WIIMOTE_UNITS_PER_G)
+        return (
+            calibration.zeroG +
+                g * calibration.unitsPerG
+            )
             .roundToInt()
             .coerceIn(0, 1023)
     }
@@ -175,10 +194,6 @@ class AndroidMotionSource(
     }
 
     private companion object {
-        const val WIIMOTE_ZERO = 512
-        const val WIIMOTE_ONE_G = 640
-        const val WIIMOTE_UNITS_PER_G = 128.0
-
         const val MOTION_PLUS_ZERO = 0x1F7F
         const val MOTION_PLUS_UNITS_PER_DEGREE = 13.768
 
