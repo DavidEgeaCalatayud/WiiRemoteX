@@ -21,9 +21,9 @@ data class PlayerLeds(
 }
 
 data class MotionState(
-    val accelerationX: Int = 512,
-    val accelerationY: Int = 512,
-    val accelerationZ: Int = 640,
+    val accelerationX: Int = 521,
+    val accelerationY: Int = 521,
+    val accelerationZ: Int = 632,
     val gyroYaw: Int = 0x1F7F,
     val gyroRoll: Int = 0x1F7F,
     val gyroPitch: Int = 0x1F7F,
@@ -63,9 +63,9 @@ data class NunchukState(
     val encryptionDisabled: Boolean = false,
     val stickX: Int = 128,
     val stickY: Int = 128,
-    val accelerationX: Int = 512,
-    val accelerationY: Int = 512,
-    val accelerationZ: Int = 640,
+    val accelerationX: Int = 521,
+    val accelerationY: Int = 521,
+    val accelerationZ: Int = 632,
     val cPressed: Boolean = false,
     val zPressed: Boolean = false,
 )
