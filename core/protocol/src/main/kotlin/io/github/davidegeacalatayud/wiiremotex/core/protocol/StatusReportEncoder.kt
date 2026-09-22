@@ -9,6 +9,8 @@ class StatusReportEncoder(
         val buttons = buttonsEncoder.encode(state).payload
 
         var flags = 0
+        if (state.nunchuk.connected || state.motionPlus.enabled) flags = flags or 0x02
+        if (state.infrared.enabled) flags = flags or 0x08
         if (state.leds.one) flags = flags or 0x10
         if (state.leds.two) flags = flags or 0x20
         if (state.leds.three) flags = flags or 0x40
