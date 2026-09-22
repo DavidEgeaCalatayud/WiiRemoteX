@@ -14,10 +14,14 @@ import io.github.davidegeacalatayud.wiiremotex.core.model.MotionPlusState
 import io.github.davidegeacalatayud.wiiremotex.core.model.NunchukState
 import io.github.davidegeacalatayud.wiiremotex.core.model.WiiButton
 import io.github.davidegeacalatayud.wiiremotex.core.model.WiimoteState
+import io.github.davidegeacalatayud.wiiremotex.core.protocol.bridge.BridgeFrameCodec
+import io.github.davidegeacalatayud.wiiremotex.core.protocol.bridge.WiiConnectionState
+import io.github.davidegeacalatayud.wiiremotex.core.session.HidTransport
 import io.github.davidegeacalatayud.wiiremotex.core.session.SessionResult
 import io.github.davidegeacalatayud.wiiremotex.core.session.WiimoteEffect
 import io.github.davidegeacalatayud.wiiremotex.core.session.WiimoteSessionEngine
-import io.github.davidegeacalatayud.wiiremotex.platform.bluetooth.AndroidHidTransport
+import io.github.davidegeacalatayud.wiiremotex.transports.androidhid.AndroidHidTransport
+import io.github.davidegeacalatayud.wiiremotex.transports.esp32ble.AndroidEsp32BleTransport
 import io.github.davidegeacalatayud.wiiremotex.platform.sensors.AndroidMotionSource
 import io.github.davidegeacalatayud.wiiremotex.platform.sensors.MotionCalibrationStore
 import io.github.davidegeacalatayud.wiiremotex.platform.sensors.OrientationSample
@@ -32,6 +36,20 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+
+enum class TransportMode(
+    val displayName: String,
+    val traceName: String,
+) {
+    DIRECT_ANDROID_HID(
+        displayName = "Direct Android HID",
+        traceName = "android-bluetooth-hid-device",
+    ),
+    ESP32_BRIDGE(
+        displayName = "ESP32 Bridge",
+        traceName = "android-corebluetooth-style-esp32-ble",
+    ),
+}
 
 enum class HidStage {
     IDLE,
@@ -50,6 +68,10 @@ data class DiagnosticEntry(
 
 data class WiiRemoteUiState(
     val hidStage: HidStage = HidStage.IDLE,
+    val transportMode: TransportMode = TransportMode.DIRECT_ANDROID_HID,
+    val bridgeReady: Boolean = false,
+    val bridgeProtocolVersion: Int? = null,
+    val bridgeFirmwareVersion: String? = null,
     val wiimote: WiimoteState = WiimoteState(),
     val diagnostics: List<DiagnosticEntry> = emptyList(),
     val lastError: String? = null,
@@ -58,17 +80,34 @@ data class WiiRemoteUiState(
 
 class WiiRemoteRuntime(
     private val application: Application,
-) : AndroidHidTransport.Listener {
+) : AndroidHidTransport.Listener, AndroidEsp32BleTransport.Listener {
 
     private val session = WiimoteSessionEngine()
     private val batteryManager = application.getSystemService(BatteryManager::class.java)
     private val calibrationStore = MotionCalibrationStore(application)
     private val traceRecorder = HardwareTraceRecorder()
+    private val preferences =
+        application.getSharedPreferences(PREFERENCES_NAME, Application.MODE_PRIVATE)
 
-    private val transport = AndroidHidTransport(
+    private val directTransport = AndroidHidTransport(
         context = application,
         listener = this,
     )
+
+    private val bridgeTransport = AndroidEsp32BleTransport(
+        context = application,
+        listener = this,
+    )
+
+    private var selectedTransportMode: TransportMode =
+        preferences.getString(PREF_TRANSPORT_MODE, null)
+            ?.let { saved ->
+                TransportMode.entries.firstOrNull { it.name == saved }
+            }
+            ?: TransportMode.DIRECT_ANDROID_HID
+
+    private var activeTransport: HidTransport =
+        transportFor(selectedTransportMode)
 
     private val scheduler = Executors.newSingleThreadScheduledExecutor()
     private var reportFuture: ScheduledFuture<*>? = null
@@ -94,8 +133,36 @@ class WiiRemoteRuntime(
         },
     )
 
-    private val _uiState = MutableStateFlow(WiiRemoteUiState())
+    private val _uiState = MutableStateFlow(
+        WiiRemoteUiState(transportMode = selectedTransportMode),
+    )
     val uiState: StateFlow<WiiRemoteUiState> = _uiState.asStateFlow()
+
+    fun selectTransport(mode: TransportMode) {
+        if (mode == selectedTransportMode) return
+
+        if (_uiState.value.hidStage != HidStage.IDLE) {
+            stopHid()
+        }
+
+        selectedTransportMode = mode
+        activeTransport = transportFor(mode)
+        preferences.edit()
+            .putString(PREF_TRANSPORT_MODE, mode.name)
+            .apply()
+
+        _uiState.update {
+            it.copy(
+                hidStage = HidStage.IDLE,
+                transportMode = mode,
+                bridgeReady = false,
+                bridgeProtocolVersion = null,
+                bridgeFirmwareVersion = null,
+                lastError = null,
+            )
+        }
+        log("SYS", "Transport selected: ${mode.displayName}")
+    }
 
     fun startHid() {
         if (_uiState.value.hidStage in setOf(
@@ -105,7 +172,7 @@ class WiiRemoteRuntime(
                 HidStage.CONNECTED,
             )
         ) {
-            log("SYS", "HID runtime already active")
+            log("SYS", "Controller transport already active")
             return
         }
 
@@ -117,16 +184,31 @@ class WiiRemoteRuntime(
             log("ERR", "No compatible Android motion sensors available")
         }
         startReportScheduler()
-        log("SYS", "Starting Android HID Device profile")
+
         _uiState.update {
             it.copy(
                 hidStage = HidStage.STARTING,
+                bridgeReady = false,
+                bridgeProtocolVersion = null,
+                bridgeFirmwareVersion = null,
                 lastError = null,
             )
         }
 
-        if (!transport.start()) {
-            fail("Android did not accept the HID Device profile request")
+        val started = when (selectedTransportMode) {
+            TransportMode.DIRECT_ANDROID_HID -> {
+                log("SYS", "Starting direct Android Bluetooth HID transport")
+                directTransport.start()
+            }
+
+            TransportMode.ESP32_BRIDGE -> {
+                log("SYS", "Starting Android → BLE → ESP32 transport")
+                bridgeTransport.start()
+            }
+        }
+
+        if (!started) {
+            fail("Unable to start ${selectedTransportMode.displayName}")
         }
     }
 
@@ -134,14 +216,38 @@ class WiiRemoteRuntime(
         setRumble(false)
         stopReportScheduler()
         motionSource.stop()
-        transport.stop()
-        log("SYS", "HID runtime stopped")
+        directTransport.stop()
+        bridgeTransport.stop()
+        log("SYS", "Controller transport stopped")
         _uiState.update {
             it.copy(
                 hidStage = HidStage.IDLE,
+                bridgeReady = false,
                 wiimote = session.state,
                 lastError = null,
             )
+        }
+    }
+
+    fun startWiiPairing() {
+        if (selectedTransportMode != TransportMode.ESP32_BRIDGE) {
+            log("SYS", "Direct HID pairing is controlled by Android/Wii discoverability")
+            return
+        }
+        if (!bridgeTransport.startWiiPairing()) {
+            log("ERR", "ESP32 bridge is not ready for Wii pairing")
+        }
+    }
+
+    fun stopWiiPairing() {
+        if (selectedTransportMode == TransportMode.ESP32_BRIDGE) {
+            bridgeTransport.stopWiiPairing()
+        }
+    }
+
+    fun clearWiiBond() {
+        if (selectedTransportMode == TransportMode.ESP32_BRIDGE) {
+            bridgeTransport.clearWiiBond()
         }
     }
 
@@ -339,6 +445,75 @@ class WiiRemoteRuntime(
         _uiState.update { it.copy(hidStage = stage) }
     }
 
+    override fun onStateChanged(state: AndroidEsp32BleTransport.State) {
+        val stage = when (state) {
+            AndroidEsp32BleTransport.State.IDLE -> HidStage.IDLE
+            AndroidEsp32BleTransport.State.SCANNING -> HidStage.STARTING
+            AndroidEsp32BleTransport.State.CONNECTING,
+            AndroidEsp32BleTransport.State.DISCOVERING,
+            -> HidStage.CONNECTING
+            AndroidEsp32BleTransport.State.READY -> HidStage.REGISTERED
+            AndroidEsp32BleTransport.State.ERROR -> HidStage.ERROR
+        }
+
+        _uiState.update { current ->
+            current.copy(hidStage = stage)
+        }
+    }
+
+    override fun onBridgeReady(
+        protocolVersion: Int,
+        firmwareVersion: String?,
+    ) {
+        val compatible = protocolVersion == BridgeFrameCodec.VERSION
+        _uiState.update {
+            it.copy(
+                bridgeReady = compatible,
+                bridgeProtocolVersion = protocolVersion,
+                bridgeFirmwareVersion = firmwareVersion,
+                hidStage = if (compatible) HidStage.REGISTERED else HidStage.ERROR,
+                lastError =
+                    if (compatible) null
+                    else "ESP32 protocol v$protocolVersion is incompatible with app v${BridgeFrameCodec.VERSION}",
+            )
+        }
+
+        log(
+            "SYS",
+            "ESP32 bridge ready · protocol v$protocolVersion" +
+                (firmwareVersion?.let { " · firmware $it" } ?: ""),
+        )
+    }
+
+    override fun onWiiConnectionStateChanged(state: Int) {
+        val stage = when (state) {
+            WiiConnectionState.CONNECTING -> HidStage.CONNECTING
+            WiiConnectionState.CONNECTED -> HidStage.CONNECTED
+            else -> HidStage.REGISTERED
+        }
+
+        log(
+            "SYS",
+            "ESP32 ↔ Wii state: " +
+                when (state) {
+                    WiiConnectionState.CONNECTING -> "CONNECTING"
+                    WiiConnectionState.CONNECTED -> "CONNECTED"
+                    else -> "DISCONNECTED"
+                },
+        )
+        _uiState.update { it.copy(hidStage = stage) }
+    }
+
+    override fun onBridgeError(code: Int) {
+        val message = "ESP32 bridge error 0x${code.hex2()}"
+        log("ERR", message)
+        _uiState.update { it.copy(lastError = message) }
+    }
+
+    override fun onDiagnostic(message: String) {
+        log("BLE", message)
+    }
+
     override fun onHostReport(
         reportId: Int,
         payload: ByteArray,
@@ -350,6 +525,7 @@ class WiiRemoteRuntime(
             state = session.state,
             reportId = reportId,
             payload = payload,
+            transport = selectedTransportMode.traceName,
         )
         log("RX", "0x${reportId.hex2()} ${payload.toHex()}")
 
@@ -394,6 +570,7 @@ class WiiRemoteRuntime(
             state = session.state,
             reportId = reportId,
             payload = payload,
+            transport = selectedTransportMode.traceName,
         )
         log("HID", "SET_REPORT type=$type id=0x${reportId.hex2()} ${payload.toHex()}")
 
@@ -411,6 +588,7 @@ class WiiRemoteRuntime(
             event = "set_protocol protocol=$protocol",
             connectionState = _uiState.value.hidStage.name,
             state = session.state,
+            transport = selectedTransportMode.traceName,
         )
         log("HID", "SET_PROTOCOL $protocol")
     }
@@ -421,6 +599,7 @@ class WiiRemoteRuntime(
             event = "virtual_cable_unplug",
             connectionState = _uiState.value.hidStage.name,
             state = session.state,
+            transport = selectedTransportMode.traceName,
         )
         log("HID", "Virtual cable unplug")
         _uiState.update { it.copy(hidStage = HidStage.REGISTERED) }
@@ -582,7 +761,7 @@ class WiiRemoteRuntime(
             when (effect) {
                 is WiimoteEffect.SendReport -> {
                     val report = effect.report
-                    val sent = transport.send(report)
+                    val sent = activeTransport.send(report)
                     traceRecorder.record(
                         direction = "TX",
                         event = if (sent) "send_report" else "send_report_not_sent",
@@ -590,6 +769,7 @@ class WiiRemoteRuntime(
                         state = result.state,
                         reportId = report.reportId,
                         payload = report.payload,
+                        transport = selectedTransportMode.traceName,
                     )
 
                     if (logTx) {
@@ -637,9 +817,16 @@ class WiiRemoteRuntime(
                 event = message,
                 connectionState = _uiState.value.hidStage.name,
                 state = session.state,
+                transport = selectedTransportMode.traceName,
             )
         }
     }
+
+    private fun transportFor(mode: TransportMode): HidTransport =
+        when (mode) {
+            TransportMode.DIRECT_ANDROID_HID -> directTransport
+            TransportMode.ESP32_BRIDGE -> bridgeTransport
+        }
 
     private fun connectionStateName(state: Int): String = when (state) {
         BluetoothProfile.STATE_DISCONNECTED -> "DISCONNECTED"
@@ -658,6 +845,9 @@ class WiiRemoteRuntime(
         }
 
     private companion object {
+        const val PREFERENCES_NAME = "wiiremotex_runtime"
+        const val PREF_TRANSPORT_MODE = "transport_mode"
+
         const val MAX_LOG_LINES = 120
         const val CONTINUOUS_REPORT_INTERVAL_MS = 10L
 
