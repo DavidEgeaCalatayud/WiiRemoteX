@@ -9,10 +9,13 @@ class WiimoteDataReportEncoder(
 ) {
     fun encode(state: WiimoteState): HidInputReport = when (state.reportMode) {
         0x31 -> encodeButtonsAndAccelerometer(state)
-        0x32 -> encodeButtonsAndExtension(state, 8)
+        0x32 -> encodeButtonsAndExtension(state, reportId = 0x32, extensionBytes = 8)
         0x33 -> encodeButtonsAccelerometerAndIr(state)
+        0x34 -> encodeButtonsAndExtension(state, reportId = 0x34, extensionBytes = 19)
         0x35 -> encodeButtonsAccelerometerAndExtension(state, 16)
+        0x36 -> encodeButtonsIrAndExtension(state)
         0x37 -> encodeButtonsAccelerometerIrAndExtension(state)
+        0x3D -> encodeExtensionOnly(state)
         else -> buttonsEncoder.encode(state)
     }
 
@@ -41,12 +44,13 @@ class WiimoteDataReportEncoder(
 
     private fun encodeButtonsAndExtension(
         state: WiimoteState,
+        reportId: Int,
         extensionBytes: Int,
     ): HidInputReport {
         val buttons = buttonsEncoder.encode(state).payload
         val extension = encodeExtensionPayload(state).copyOf(extensionBytes)
         return HidInputReport(
-            reportId = 0x32,
+            reportId = reportId,
             payload = buttons + extension,
         )
     }
@@ -62,6 +66,26 @@ class WiimoteDataReportEncoder(
             payload = base + extension,
         )
     }
+
+    private fun encodeButtonsIrAndExtension(
+        state: WiimoteState,
+    ): HidInputReport {
+        val buttons = buttonsEncoder.encode(state).payload
+        val ir = encodeBasicIr(state.infrared.points)
+        val extension = encodeExtensionPayload(state).copyOf(9)
+        return HidInputReport(
+            reportId = 0x36,
+            payload = buttons + ir + extension,
+        )
+    }
+
+    private fun encodeExtensionOnly(
+        state: WiimoteState,
+    ): HidInputReport =
+        HidInputReport(
+            reportId = 0x3D,
+            payload = encodeExtensionPayload(state).copyOf(21),
+        )
 
     private fun encodeButtonsAccelerometerIrAndExtension(
         state: WiimoteState,
