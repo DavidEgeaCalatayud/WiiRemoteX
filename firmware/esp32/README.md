@@ -1,13 +1,12 @@
 # WiiRemoteX ESP32 bridge
 
-This firmware is the transport layer for the iOS version of WiiRemoteX.
+This firmware is the shared bridge transport for the Android fallback and iOS versions of WiiRemoteX.
 
 ```text
-iPhone
-  SwiftUI + CoreMotion
-  WiiRemoteShared / WiimoteSessionEngine
+Android fallback / iPhone
+  WiiRemoteX shared WiimoteSessionEngine
         |
-        | BLE GATT (WiiRemoteX bridge protocol)
+        | BLE GATT (same bridge protocol)
         v
 ESP32
   custom BLE GATT server
@@ -20,7 +19,7 @@ Nintendo Wii
 
 The ESP32 does **not** implement Wii Remote state, IR, Nunchuk or MotionPlus logic. Those remain in the shared Kotlin engine. The firmware forwards input reports to the Wii and forwards Wii output reports back to the phone.
 
-The phone-to-bridge path uses ordered CoreBluetooth writes. The bridge-to-phone path uses queued **GATT indications** so host commands and bridge status messages are confirmed before the next fragment is transmitted.
+The phone-to-bridge path uses ordered writes from CoreBluetooth (iOS) or Android GATT. The bridge-to-phone path uses queued **GATT indications** so host commands and bridge status messages are confirmed before the next fragment is transmitted.
 
 ## Required hardware
 
@@ -30,13 +29,13 @@ Do not buy an ESP32-S3/C3/C6 board for this bridge: the Wii-facing side requires
 
 ## BLE service
 
-The iPhone discovers:
+Android and iPhone discover:
 
 - Service: `7C0A0001-6F4B-4A42-9D47-575258000001`
 - Phone -> bridge: `7C0A0002-6F4B-4A42-9D47-575258000001`
 - Bridge -> phone: `7C0A0003-6F4B-4A42-9D47-575258000001`
 
-Packets are capped at 20 bytes. The shared bridge protocol fragments larger Wii messages using a six-byte header. Once iOS subscribes to the bridge-to-phone characteristic, the ESP32 sends a `BRIDGE_READY` status containing the protocol version before Wii pairing is enabled in the UI:
+Packets are capped at 20 bytes. The shared bridge protocol fragments larger Wii messages using a six-byte header. Once the phone subscribes to the bridge-to-phone characteristic, the ESP32 sends a `BRIDGE_READY` status containing protocol version plus firmware semantic version before Wii pairing is enabled in the UI:
 
 ```text
 version
@@ -66,12 +65,16 @@ Flash:
 idf.py -p <SERIAL_PORT> flash monitor
 ```
 
+## CI artifact
+
+Every ESP32 CI build publishes **WiiRemoteX-ESP32-firmware** containing the application binary, bootloader, partition table, `flash_args` and `flasher_args.json`.
+
 ## First validation
 
 1. Power the ESP32.
-2. Open WiiRemoteX on iPhone.
-3. Tap **Connect ESP32**.
-4. Confirm `iPhone ↔ ESP32 = Connected` and `Bridge protocol = Ready v1`.
+2. Open WiiRemoteX on Android or iPhone.
+3. On Android select **ESP32 Bridge**; on iPhone tap **Connect ESP32**.
+4. Confirm the BLE bridge is connected, protocol is **Ready v1**, and firmware version is visible.
 5. Tap **Pair Wii**.
 6. Start Wii controller synchronization.
 7. Watch serial logs for the Classic HID connection.
