@@ -53,10 +53,13 @@ class MainActivity : ComponentActivity() {
                         },
                         lastError = state.lastError,
                         pointerCalibrated = state.pointerCalibrated,
+                        pointerMode = state.pointerMode,
                         sensorAccelerometer = state.sensors.accelerometer,
                         sensorGyroscope = state.sensors.gyroscope,
                         sensorRotationVector = state.sensors.rotationVector,
                         onCalibratePointer = viewModel::calibratePointer,
+                        onPointerModeChanged = viewModel::setPointerMode,
+                        onTouchPointer = viewModel::setTouchPointer,
                         onSelectExtension = viewModel::selectExtension,
                         onNunchukStick = viewModel::setNunchukStick,
                         onNunchukCChanged = viewModel::setNunchukCPressed,
@@ -116,6 +119,7 @@ class MainActivity : ComponentActivity() {
             appendLine("Rumble: ${state.wiimote.rumbleEnabled}")
             appendLine("Battery byte: 0x${state.wiimote.batteryLevel.toString(16).uppercase().padStart(2, '0')}")
             appendLine("Pointer calibrated: ${state.pointerCalibrated}")
+            appendLine("Pointer mode: ${state.pointerMode}")
             appendLine("Sensors: accel=${state.sensors.accelerometer} gyro=${state.sensors.gyroscope} rotation=${state.sensors.rotationVector}")
             appendLine("Extension: ${state.wiimote.extension}")
             appendLine()
