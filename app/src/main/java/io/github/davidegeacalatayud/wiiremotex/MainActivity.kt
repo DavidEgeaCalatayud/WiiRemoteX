@@ -66,6 +66,9 @@ class MainActivity : ComponentActivity() {
                             }
                         },
                         onStopHid = viewModel::stopHid,
+                        onShareDiagnostics = {
+                            shareDiagnostics(state)
+                        },
                         onButtonChanged = viewModel::onButtonChanged,
                     )
                 }
@@ -94,6 +97,34 @@ class MainActivity : ComponentActivity() {
 
         afterPermissionGranted = action
         permissionLauncher.launch(missing.toTypedArray())
+    }
+
+    private fun shareDiagnostics(state: WiiRemoteUiState) {
+        val diagnostics = buildString {
+            appendLine("WiiRemoteX diagnostics")
+            appendLine("Device: ${android.os.Build.MANUFACTURER} ${android.os.Build.MODEL}")
+            appendLine("Android: ${android.os.Build.VERSION.RELEASE} (API ${android.os.Build.VERSION.SDK_INT})")
+            appendLine("HID stage: ${state.hidStage}")
+            appendLine("Report mode: 0x${state.wiimote.reportMode.toString(16).uppercase().padStart(2, '0')}")
+            appendLine("Continuous reporting: ${state.wiimote.continuousReporting}")
+            appendLine("Rumble: ${state.wiimote.rumbleEnabled}")
+            appendLine("Battery byte: 0x${state.wiimote.batteryLevel.toString(16).uppercase().padStart(2, '0')}")
+            appendLine()
+            appendLine("Events:")
+            state.diagnostics.forEach { entry ->
+                appendLine("${entry.timestamp} ${entry.direction}  ${entry.message}")
+            }
+        }
+
+        val intent = Intent(Intent.ACTION_SEND).apply {
+            type = "text/plain"
+            putExtra(Intent.EXTRA_SUBJECT, "WiiRemoteX diagnostics")
+            putExtra(Intent.EXTRA_TEXT, diagnostics)
+        }
+
+        startActivity(
+            Intent.createChooser(intent, "Share WiiRemoteX diagnostics"),
+        )
     }
 
     private fun requestDiscoverable() {
