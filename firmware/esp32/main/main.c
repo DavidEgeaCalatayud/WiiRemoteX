@@ -15,7 +15,7 @@ static const char *TAG = "wiiremotex_bridge";
 
 static bridge_reassembler_t s_phone_reassembler;
 static uint16_t s_bridge_sequence;
-static bool s_wii_connected;
+static bridge_wii_connection_state_t s_wii_state = BRIDGE_WII_DISCONNECTED;
 
 static void send_bridge_message(
     bridge_message_type_t type,
@@ -51,7 +51,7 @@ static void send_bridge_message(
 static void send_wii_connection_status(void) {
     const uint8_t payload[] = {
         BRIDGE_STATUS_WII_CONNECTION,
-        s_wii_connected ? BRIDGE_WII_CONNECTED : BRIDGE_WII_DISCONNECTED,
+        (uint8_t)s_wii_state,
     };
     send_bridge_message(BRIDGE_STATUS, payload, sizeof(payload));
 }
@@ -91,7 +91,8 @@ static void on_wii_output(
 }
 
 static void on_wii_connection(bool connected) {
-    s_wii_connected = connected;
+    s_wii_state =
+        connected ? BRIDGE_WII_CONNECTED : BRIDGE_WII_DISCONNECTED;
     send_wii_connection_status();
 }
 
@@ -104,17 +105,27 @@ static void handle_control_message(
     switch (payload[0]) {
         case BRIDGE_CONTROL_START_WII_PAIRING:
             ESP_LOGI(TAG, "iPhone requested Wii pairing mode");
+            if (s_wii_state != BRIDGE_WII_CONNECTED) {
+                s_wii_state = BRIDGE_WII_CONNECTING;
+                send_wii_connection_status();
+            }
             classic_hid_set_pairing(true);
             break;
 
         case BRIDGE_CONTROL_STOP_WII_PAIRING:
             ESP_LOGI(TAG, "iPhone requested pairing stop");
             classic_hid_set_pairing(false);
+            if (s_wii_state != BRIDGE_WII_CONNECTED) {
+                s_wii_state = BRIDGE_WII_DISCONNECTED;
+                send_wii_connection_status();
+            }
             break;
 
         case BRIDGE_CONTROL_CLEAR_WII_BOND:
             ESP_LOGI(TAG, "iPhone requested Wii bond reset");
             classic_hid_clear_bonds();
+            s_wii_state = BRIDGE_WII_DISCONNECTED;
+            send_wii_connection_status();
             break;
 
         default:
