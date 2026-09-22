@@ -16,7 +16,42 @@ class WiimoteDataReportEncoder(
         0x36 -> encodeButtonsIrAndExtension(state)
         0x37 -> encodeButtonsAccelerometerIrAndExtension(state)
         0x3D -> encodeExtensionOnly(state)
+        0x3E, 0x3F -> encodeInterleaved(state, state.reportMode)
         else -> buttonsEncoder.encode(state)
+    }
+
+    fun encodeInterleaved(
+        state: WiimoteState,
+        reportId: Int,
+    ): HidInputReport {
+        require(reportId == 0x3E || reportId == 0x3F)
+
+        val base = buttonsEncoder.encode(state).payload
+        val z = state.motion.accelerationZ.coerceIn(0, 1023)
+        var first = base[0].toInt() and 0xFF
+        var second = base[1].toInt() and 0xFF
+
+        val accelerationByte = if (reportId == 0x3E) {
+            first = first or (((z shr 4) and 0x03) shl 5)
+            second = second or (((z shr 6) and 0x03) shl 5)
+            (state.motion.accelerationX.coerceIn(0, 1023) shr 2) and 0xFF
+        } else {
+            first = first or ((z and 0x03) shl 5)
+            second = second or (((z shr 2) and 0x03) shl 5)
+            (state.motion.accelerationY.coerceIn(0, 1023) shr 2) and 0xFF
+        }
+
+        val fullIr = encodeFullIr(state.infrared.points)
+        val irOffset = if (reportId == 0x3E) 0 else 18
+
+        return HidInputReport(
+            reportId = reportId,
+            payload = byteArrayOf(
+                first.toByte(),
+                second.toByte(),
+                accelerationByte.toByte(),
+            ) + fullIr.copyOfRange(irOffset, irOffset + 18),
+        )
     }
 
     fun encodeButtonsAndAccelerometer(state: WiimoteState): HidInputReport {
@@ -113,6 +148,37 @@ class WiimoteDataReportEncoder(
         second = second or ((z and 0x02) shl 5)
 
         return first to second
+    }
+
+    private fun encodeFullIr(points: List<InfraredPoint>): ByteArray {
+        val normalized = normalizePoints(points)
+        return normalized.flatMap { point ->
+            if (!point.visible) {
+                List(9) { 0xFF.toByte() }
+            } else {
+                val x = point.x.coerceIn(0, 1023)
+                val y = point.y.coerceIn(0, 767)
+                val size = point.size.coerceIn(0, 15)
+
+                val rawX = (x shr 3).coerceIn(0, 127)
+                val rawY = (y shr 3).coerceIn(0, 95)
+                val radius = (size / 2).coerceAtLeast(1)
+
+                listOf(
+                    (x and 0xFF).toByte(),
+                    (y and 0xFF).toByte(),
+                    ((((y shr 8) and 0x03) shl 6) or
+                        (((x shr 8) and 0x03) shl 4) or
+                        size).toByte(),
+                    (rawX - radius).coerceIn(0, 127).toByte(),
+                    (rawY - radius).coerceIn(0, 127).toByte(),
+                    (rawX + radius).coerceIn(0, 127).toByte(),
+                    (rawY + radius).coerceIn(0, 127).toByte(),
+                    0x00,
+                    0x80.toByte(),
+                )
+            }
+        }.toByteArray()
     }
 
     private fun encodeExtendedIr(points: List<InfraredPoint>): ByteArray {
