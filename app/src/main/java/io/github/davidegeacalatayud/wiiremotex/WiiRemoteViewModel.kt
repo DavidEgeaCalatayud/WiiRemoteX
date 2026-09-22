@@ -31,4 +31,32 @@ class WiiRemoteViewModel(
     fun onButtonChanged(button: WiiButton, pressed: Boolean) {
         runtime.onButtonChanged(button, pressed)
     }
+
+    fun setIrPointer(x: Float, y: Float) {
+        runtime.setIrPointer(x, y)
+    }
+
+    fun setIrEnabled(enabled: Boolean) {
+        runtime.setIrEnabled(enabled)
+    }
+
+    fun setNunchukEnabled(enabled: Boolean) {
+        runtime.setNunchukEnabled(enabled)
+    }
+
+    fun setNunchukStick(x: Float, y: Float) {
+        runtime.setNunchukStick(x, y)
+    }
+
+    fun setNunchukC(pressed: Boolean) {
+        runtime.setNunchukButton(cPressed = pressed)
+    }
+
+    fun setNunchukZ(pressed: Boolean) {
+        runtime.setNunchukButton(zPressed = pressed)
+    }
+
+    fun setMotionPlusEnabled(enabled: Boolean) {
+        runtime.setMotionPlusEnabled(enabled)
+    }
 }
