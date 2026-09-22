@@ -26,6 +26,9 @@ The Wiimote protocol is intentionally independent from Android. If stock Android
 
 ## Milestone 0
 
+The current PoC now wires Compose button events through the session engine into the Android HID transport, exposes Bluetooth registration/connection state, supports discoverability from the app, logs RX/TX reports, and answers Wii status request `0x15` with input report `0x20`.
+
+
 - Android 9+ (`minSdk 28`)
 - Wii Remote HID report descriptor
 - Android `BluetoothHidDevice` registration
