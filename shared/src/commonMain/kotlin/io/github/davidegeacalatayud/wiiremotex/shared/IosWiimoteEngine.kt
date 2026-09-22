@@ -50,6 +50,9 @@ class IosWiimoteEngine(
     var bridgeErrorCode: Int = 0
         private set
 
+    var bridgeFirmwareVersion: String = ""
+        private set
+
     val bridgeProtocolCompatible: Boolean
         get() = bridgeReady && bridgeProtocolVersion == BridgeFrameCodec.VERSION
 
@@ -388,6 +391,7 @@ class IosWiimoteEngine(
         bridgeReady = false
         bridgeProtocolVersion = 0
         bridgeErrorCode = 0
+        bridgeFirmwareVersion = ""
         wiiConnectionState = WiiConnectionState.DISCONNECTED
     }
 
@@ -407,6 +411,14 @@ class IosWiimoteEngine(
 
             BridgeStatusCode.BRIDGE_READY -> {
                 bridgeProtocolVersion = payload[1].toInt() and 0xFF
+                bridgeFirmwareVersion =
+                    if (payload.size >= 5) {
+                        "${payload[2].toInt() and 0xFF}." +
+                            "${payload[3].toInt() and 0xFF}." +
+                            "${payload[4].toInt() and 0xFF}"
+                    } else {
+                        ""
+                    }
                 bridgeReady = true
                 bridgeErrorCode = 0
             }
