@@ -12,9 +12,19 @@ class WiimoteDataReportEncoder(
         passThroughNunchukSample: Boolean = false,
     ): HidInputReport = when (state.reportMode) {
         0x31 -> encodeButtonsAndAccelerometer(state)
-        0x32 -> encodeButtonsAndExtension(state, reportId = 0x32, extensionBytes = 8, passThroughNunchukSample)
+        0x32 -> encodeButtonsAndExtension(
+            state = state,
+            reportId = 0x32,
+            extensionBytes = 8,
+            passThroughNunchukSample = passThroughNunchukSample,
+        )
         0x33 -> encodeButtonsAccelerometerAndIr(state)
-        0x34 -> encodeButtonsAndExtension(state, reportId = 0x34, extensionBytes = 19, passThroughNunchukSample)
+        0x34 -> encodeButtonsAndExtension(
+            state = state,
+            reportId = 0x34,
+            extensionBytes = 19,
+            passThroughNunchukSample = passThroughNunchukSample,
+        )
         0x35 -> encodeButtonsAccelerometerAndExtension(state, 16, passThroughNunchukSample)
         0x36 -> encodeButtonsIrAndExtension(state, passThroughNunchukSample)
         0x37 -> encodeButtonsAccelerometerIrAndExtension(state, passThroughNunchukSample)
@@ -100,7 +110,8 @@ class WiimoteDataReportEncoder(
         passThroughNunchukSample: Boolean,
     ): HidInputReport {
         val base = encodeButtonsAndAccelerometer(state).payload
-        val extension = encodeExtensionPayload(state).copyOf(extensionBytes)
+        val extension =
+            encodeExtensionPayload(state, passThroughNunchukSample).copyOf(extensionBytes)
         return HidInputReport(
             reportId = 0x35,
             payload = base + extension,
