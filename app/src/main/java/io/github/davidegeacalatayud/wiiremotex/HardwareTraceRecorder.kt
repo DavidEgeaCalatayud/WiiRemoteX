@@ -3,21 +3,11 @@ package io.github.davidegeacalatayud.wiiremotex
 import android.os.Build
 import android.os.SystemClock
 import io.github.davidegeacalatayud.wiiremotex.core.model.WiimoteState
-
-data class HardwareTraceEvent(
-    val timestampNs: Long,
-    val elapsedRealtimeNs: Long,
-    val direction: String,
-    val transport: String,
-    val event: String,
-    val reportId: Int?,
-    val payload: ByteArray,
-    val connectionState: String,
-    val reportMode: Int,
-    val extensionState: String,
-    val irState: String,
-    val motionPlusState: String,
-)
+import io.github.davidegeacalatayud.wiiremotex.core.trace.HARDWARE_TRACE_SCHEMA
+import io.github.davidegeacalatayud.wiiremotex.core.trace.HardwareTraceEvent
+import io.github.davidegeacalatayud.wiiremotex.core.trace.traceExtensionState
+import io.github.davidegeacalatayud.wiiremotex.core.trace.traceInfraredState
+import io.github.davidegeacalatayud.wiiremotex.core.trace.traceMotionPlusState
 
 class HardwareTraceRecorder(
     private val maxEvents: Int = 8_000,
@@ -32,7 +22,7 @@ class HardwareTraceRecorder(
         state: WiimoteState,
         reportId: Int? = null,
         payload: ByteArray = byteArrayOf(),
-        transport: String = "android-bluetooth-hid-device",
+        transport: String,
     ) {
         events.addLast(
             HardwareTraceEvent(
@@ -45,16 +35,9 @@ class HardwareTraceRecorder(
                 payload = payload.copyOf(),
                 connectionState = connectionState,
                 reportMode = state.reportMode,
-                extensionState =
-                    "nunchuk.connected=${state.nunchuk.connected};" +
-                        "nunchuk.initialized=${state.nunchuk.initialized}",
-                irState =
-                    "enabled=${state.infrared.enabled};configured=${state.infrared.configured};" +
-                        "mode=${state.infrared.mode}",
-                motionPlusState =
-                    "present=${state.motionPlus.present};initialized=${state.motionPlus.initialized};" +
-                        "active=${state.motionPlus.active};mode=${state.motionPlus.activationMode};" +
-                        "passthrough=${state.motionPlus.passThroughNunchuk}",
+                extensionState = state.traceExtensionState(),
+                irState = state.traceInfraredState(),
+                motionPlusState = state.traceMotionPlusState(),
             ),
         )
         while (events.size > maxEvents) events.removeFirst()
@@ -66,7 +49,7 @@ class HardwareTraceRecorder(
     @Synchronized
     fun exportJson(): String = buildString {
         append("{\n")
-        append("  \"schema\": \"wiiremotex-hardware-trace-v1\",\n")
+        append("  \"schema\": \"${HARDWARE_TRACE_SCHEMA}\",\n")
         append("  \"device\": {")
         append("\"manufacturer\":\"${escape(Build.MANUFACTURER)}\",")
         append("\"model\":\"${escape(Build.MODEL)}\",")
