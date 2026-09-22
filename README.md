@@ -53,7 +53,7 @@ See `docs/architecture/ARCHITECTURE.md`.
 
 ## Current development state
 
-### 0.3.0-alpha
+### 0.4.0-alpha
 
 Implemented in software:
 
