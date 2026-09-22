@@ -67,4 +67,10 @@ class WiiRemoteViewModel(
     fun recenterMotionPointer() {
         runtime.recenterMotionPointer()
     }
+
+    fun exportHardwareTraceJson(): String = runtime.exportHardwareTraceJson()
+
+    fun clearHardwareTrace() {
+        runtime.clearHardwareTrace()
+    }
 }
