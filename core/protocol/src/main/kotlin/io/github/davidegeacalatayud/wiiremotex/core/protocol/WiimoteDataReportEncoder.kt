@@ -326,10 +326,19 @@ class WiimoteDataReportEncoder(
     }
 
     private fun encodeMotionPlus(state: WiimoteState): ByteArray {
-        val yaw = state.motion.gyroYaw.coerceIn(0, 0x3FFF)
-        val roll = state.motion.gyroRoll.coerceIn(0, 0x3FFF)
-        val pitch = state.motion.gyroPitch.coerceIn(0, 0x3FFF)
         val mp = state.motionPlus
+        val yaw = motionPlusRawForMode(
+            state.motion.gyroYaw,
+            mp.yawSlow,
+        )
+        val roll = motionPlusRawForMode(
+            state.motion.gyroRoll,
+            mp.rollSlow,
+        )
+        val pitch = motionPlusRawForMode(
+            state.motion.gyroPitch,
+            mp.pitchSlow,
+        )
 
         return byteArrayOf(
             (yaw and 0xFF).toByte(),
@@ -359,6 +368,24 @@ class WiimoteDataReportEncoder(
             List(4) { InfraredPoint() }
         }
 
+    private fun motionPlusRawForMode(
+        slowModeRaw: Int,
+        slow: Boolean,
+    ): Int {
+        val clamped = slowModeRaw.coerceIn(0, 0x3FFF)
+        if (slow) return clamped
+
+        val delta = clamped - MOTION_PLUS_ZERO
+        val fastDelta = delta * MOTION_PLUS_SLOW_RANGE_DPS / MOTION_PLUS_FAST_RANGE_DPS
+        return (MOTION_PLUS_ZERO + fastDelta).coerceIn(0, 0x3FFF)
+    }
+
     private fun normalizePoints(points: List<InfraredPoint>): List<InfraredPoint> =
         List(4) { index -> points.getOrElse(index) { InfraredPoint() } }
+
+    private companion object {
+        const val MOTION_PLUS_ZERO = 0x1F7F
+        const val MOTION_PLUS_SLOW_RANGE_DPS = 440
+        const val MOTION_PLUS_FAST_RANGE_DPS = 2000
+    }
 }
