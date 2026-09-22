@@ -48,4 +48,44 @@ class WiimoteSessionEngineTest {
         assertEquals(0x00, engine.setBatteryLevel(-1).batteryLevel)
         assertEquals(0x80, engine.setBatteryLevel(0x80).batteryLevel)
     }
+    @Test
+    fun `motion does not emit while report mode is buttons only`() {
+        val engine = WiimoteSessionEngine()
+
+        val result = engine.setMotion(
+            io.github.davidegeacalatayud.wiiremotex.core.model.MotionState(
+                accelerationX = 600,
+            ),
+        )
+
+        assertTrue(result.effects.isEmpty())
+        assertEquals(600, result.state.motion.accelerationX)
+    }
+
+    @Test
+    fun `motion emits report 0x31 after host selects mode 0x31`() {
+        val engine = WiimoteSessionEngine()
+        engine.onHostReport(0x12, byteArrayOf(0x00, 0x31))
+
+        val result = engine.setMotion(
+            io.github.davidegeacalatayud.wiiremotex.core.model.MotionState(
+                accelerationX = 600,
+            ),
+        )
+
+        val effect = assertIs<WiimoteEffect.SendReport>(result.effects.single())
+        assertEquals(0x31, effect.report.reportId)
+    }
+
+    @Test
+    fun `IR enable host command updates state`() {
+        val engine = WiimoteSessionEngine()
+
+        val result = engine.onHostReport(
+            0x13,
+            byteArrayOf(0x04),
+        )
+
+        assertTrue(result.state.infrared.enabled)
+    }
 }
