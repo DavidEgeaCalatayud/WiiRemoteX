@@ -55,6 +55,9 @@ class IosWiimoteEngineTest {
             payload = byteArrayOf(
                 BridgeStatusCode.BRIDGE_READY.toByte(),
                 BridgeFrameCodec.VERSION.toByte(),
+                0x00,
+                0x06,
+                0x00,
             ),
         )
 
@@ -63,6 +66,7 @@ class IosWiimoteEngineTest {
         assertTrue(engine.bridgeReady)
         assertTrue(engine.bridgeProtocolCompatible)
         assertEquals(BridgeFrameCodec.VERSION, engine.bridgeProtocolVersion)
+        assertEquals("0.6.0", engine.bridgeFirmwareVersion)
         assertEquals("Ready v1", engine.bridgeProtocolStatusLabel)
     }
 
