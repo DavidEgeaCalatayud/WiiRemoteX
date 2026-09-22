@@ -36,8 +36,9 @@ class MainActivity : ComponentActivity() {
 
     private val discoverableLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult(),
-    ) {
+    ) { result ->
         // Result code is the number of seconds granted, or RESULT_CANCELED.
+        viewModel.recordDiscoverabilityResult(result.resultCode)
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -172,6 +173,7 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun requestDiscoverable() {
+        viewModel.recordDiscoverabilityRequested(DISCOVERABLE_SECONDS)
         val intent = Intent(BluetoothAdapter.ACTION_REQUEST_DISCOVERABLE).apply {
             putExtra(BluetoothAdapter.EXTRA_DISCOVERABLE_DURATION, DISCOVERABLE_SECONDS)
         }
