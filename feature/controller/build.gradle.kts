@@ -4,7 +4,7 @@ plugins {
 }
 android {
     namespace = "io.github.davidegeacalatayud.wiiremotex.feature.controller"
-    compileSdk = 37
+    compileSdk = 36
     defaultConfig { minSdk = 28 }
     buildFeatures { compose = true }
 }
