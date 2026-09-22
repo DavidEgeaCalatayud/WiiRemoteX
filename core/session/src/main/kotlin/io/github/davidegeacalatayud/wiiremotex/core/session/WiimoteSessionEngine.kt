@@ -6,10 +6,10 @@ import io.github.davidegeacalatayud.wiiremotex.core.protocol.CoreButtonsReportEn
 import io.github.davidegeacalatayud.wiiremotex.core.protocol.HidInputReport
 import io.github.davidegeacalatayud.wiiremotex.core.protocol.HostCommand
 import io.github.davidegeacalatayud.wiiremotex.core.protocol.HostCommandDecoder
+import io.github.davidegeacalatayud.wiiremotex.core.protocol.StatusReportEncoder
 
 sealed interface WiimoteEffect {
     data class SendReport(val report: HidInputReport) : WiimoteEffect
-    data object SendStatusReport : WiimoteEffect
 }
 
 data class SessionResult(
@@ -19,7 +19,8 @@ data class SessionResult(
 
 class WiimoteSessionEngine(
     initialState: WiimoteState = WiimoteState(),
-    private val encoder: CoreButtonsReportEncoder = CoreButtonsReportEncoder(),
+    private val buttonsEncoder: CoreButtonsReportEncoder = CoreButtonsReportEncoder(),
+    private val statusEncoder: StatusReportEncoder = StatusReportEncoder(),
     private val decoder: HostCommandDecoder = HostCommandDecoder(),
 ) {
     var state: WiimoteState = initialState
@@ -30,9 +31,12 @@ class WiimoteSessionEngine(
             if (pressed) add(button) else remove(button)
         }
         state = state.copy(pressedButtons = buttons)
+
         return SessionResult(
             state = state,
-            effects = listOf(WiimoteEffect.SendReport(encoder.encode(state))),
+            effects = listOf(
+                WiimoteEffect.SendReport(buttonsEncoder.encode(state)),
+            ),
         )
     }
 
@@ -45,6 +49,7 @@ class WiimoteSessionEngine(
                 )
                 emptyList()
             }
+
             is HostCommand.SetReportMode -> {
                 state = state.copy(
                     reportMode = command.reportMode,
@@ -53,12 +58,17 @@ class WiimoteSessionEngine(
                 )
                 emptyList()
             }
+
             is HostCommand.StatusRequest -> {
                 state = state.copy(rumbleEnabled = command.rumbleEnabled)
-                listOf(WiimoteEffect.SendStatusReport)
+                listOf(
+                    WiimoteEffect.SendReport(statusEncoder.encode(state)),
+                )
             }
+
             is HostCommand.Unknown -> emptyList()
         }
+
         return SessionResult(state = state, effects = effects)
     }
 }
