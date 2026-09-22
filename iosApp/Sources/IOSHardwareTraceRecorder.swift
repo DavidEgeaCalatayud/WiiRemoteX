@@ -1,4 +1,6 @@
+import Darwin
 import Foundation
+import UIKit
 
 struct IOSHardwareTraceEvent: Codable {
     let timestampNs: UInt64
