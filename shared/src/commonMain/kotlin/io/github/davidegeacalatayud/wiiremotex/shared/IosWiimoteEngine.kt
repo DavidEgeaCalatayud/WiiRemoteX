@@ -22,8 +22,9 @@ import kotlin.math.roundToInt
  * and fed back into the same session engine.
  */
 class IosWiimoteEngine(
-    private var calibration: MotionCalibrationProfile = MotionCalibrationProfile.DEFAULT,
+    private var calibration: MotionCalibrationProfile,
 ) {
+    constructor() : this(MotionCalibrationProfile.DEFAULT)
     private val session = WiimoteSessionEngine()
     private val reassembler = BridgeFrameReassembler()
 
