@@ -53,7 +53,7 @@ See `docs/architecture/ARCHITECTURE.md`.
 
 ## Current development state
 
-### 0.2.0-alpha
+### 0.3.0-alpha
 
 Implemented in software:
 
@@ -77,7 +77,7 @@ Still hardware-gated:
 - validating IR geometry against Wii cursor behavior
 - MotionPlus calibration/pass-through edge cases
 - Nunchuk/MotionPlus initialization compatibility across games
-- interleaved IR reports 0x3E/0x3F
+- hardware validation of interleaved IR 0x3E/0x3F timing and full-mode geometry
 
 ## Roadmap
 
