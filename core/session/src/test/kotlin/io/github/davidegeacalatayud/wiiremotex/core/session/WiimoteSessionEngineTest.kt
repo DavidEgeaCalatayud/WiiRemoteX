@@ -11,6 +11,7 @@ class WiimoteSessionEngineTest {
     @Test
     fun `pressing A updates state and emits report 0x30`() {
         val result = WiimoteSessionEngine().setButton(WiiButton.A, true)
+
         assertTrue(WiiButton.A in result.state.pressedButtons)
         val effect = assertIs<WiimoteEffect.SendReport>(result.effects.single())
         assertEquals(0x30, effect.report.reportId)
@@ -19,8 +20,24 @@ class WiimoteSessionEngineTest {
 
     @Test
     fun `host report 0x12 changes reporting mode`() {
-        val result = WiimoteSessionEngine().onHostReport(0x12, byteArrayOf(0x04, 0x33))
+        val result = WiimoteSessionEngine().onHostReport(
+            0x12,
+            byteArrayOf(0x04, 0x33),
+        )
+
         assertTrue(result.state.continuousReporting)
         assertEquals(0x33, result.state.reportMode)
+    }
+
+    @Test
+    fun `status request emits report 0x20`() {
+        val result = WiimoteSessionEngine().onHostReport(
+            0x15,
+            byteArrayOf(0x00),
+        )
+
+        val effect = assertIs<WiimoteEffect.SendReport>(result.effects.single())
+        assertEquals(0x20, effect.report.reportId)
+        assertEquals(6, effect.report.payload.size)
     }
 }
