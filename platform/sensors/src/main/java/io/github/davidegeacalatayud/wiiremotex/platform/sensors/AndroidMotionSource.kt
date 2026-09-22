@@ -6,8 +6,8 @@ import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
 import android.hardware.SensorManager
 import io.github.davidegeacalatayud.wiiremotex.core.model.AxisCalibration
+import io.github.davidegeacalatayud.wiiremotex.core.model.MotionCalibrationProfile
 import io.github.davidegeacalatayud.wiiremotex.core.model.MotionState
-import io.github.davidegeacalatayud.wiiremotex.core.model.WiimoteAccelerometerCalibration
 import kotlin.math.PI
 import kotlin.math.roundToInt
 
@@ -20,8 +20,7 @@ data class OrientationSample(
 class AndroidMotionSource(
     context: Context,
     private val listener: Listener,
-    private val accelerometerCalibration: WiimoteAccelerometerCalibration =
-        WiimoteAccelerometerCalibration.DEFAULT,
+    initialCalibration: MotionCalibrationProfile = MotionCalibrationProfile.DEFAULT,
 ) : SensorEventListener {
 
     interface Listener {
@@ -42,17 +41,19 @@ class AndroidMotionSource(
         sensorManager.getDefaultSensor(Sensor.TYPE_GAME_ROTATION_VECTOR)
             ?: sensorManager.getDefaultSensor(Sensor.TYPE_ROTATION_VECTOR)
 
-    private var accelerationX = accelerometerCalibration.x.zeroG
-    private var accelerationY = accelerometerCalibration.y.zeroG
-    private var accelerationZ = accelerometerCalibration.z.positiveOneG
+    private var calibration = initialCalibration
+
+    private var accelerationX = calibration.accelerometer.x.zeroG
+    private var accelerationY = calibration.accelerometer.y.zeroG
+    private var accelerationZ = calibration.accelerometer.z.positiveOneG
 
     private var gyroYaw = MOTION_PLUS_ZERO
     private var gyroRoll = MOTION_PLUS_ZERO
     private var gyroPitch = MOTION_PLUS_ZERO
 
-    private var gyroBiasX = 0f
-    private var gyroBiasY = 0f
-    private var gyroBiasZ = 0f
+    private var gyroBiasX = calibration.gyroBiasXRadPerSec
+    private var gyroBiasY = calibration.gyroBiasYRadPerSec
+    private var gyroBiasZ = calibration.gyroBiasZRadPerSec
 
     private var latestGyroX = 0f
     private var latestGyroY = 0f
@@ -93,26 +94,41 @@ class AndroidMotionSource(
         sensorManager.unregisterListener(this)
     }
 
-    fun calibrateGyroscope() {
+    fun calibrateGyroscope(): MotionCalibrationProfile {
         gyroBiasX = latestGyroX
         gyroBiasY = latestGyroY
         gyroBiasZ = latestGyroZ
+        calibration = calibration.copy(
+            gyroBiasXRadPerSec = gyroBiasX,
+            gyroBiasYRadPerSec = gyroBiasY,
+            gyroBiasZRadPerSec = gyroBiasZ,
+        )
+        return calibration
     }
+
+    fun updateCalibration(profile: MotionCalibrationProfile) {
+        calibration = profile
+        gyroBiasX = profile.gyroBiasXRadPerSec
+        gyroBiasY = profile.gyroBiasYRadPerSec
+        gyroBiasZ = profile.gyroBiasZRadPerSec
+    }
+
+    fun currentCalibration(): MotionCalibrationProfile = calibration
 
     override fun onSensorChanged(event: SensorEvent) {
         when (event.sensor.type) {
             Sensor.TYPE_ACCELEROMETER -> {
                 accelerationX = accelerationToWiimote(
                     event.values[0],
-                    accelerometerCalibration.x,
+                    calibration.accelerometer.x,
                 )
                 accelerationY = accelerationToWiimote(
                     -event.values[1],
-                    accelerometerCalibration.y,
+                    calibration.accelerometer.y,
                 )
                 accelerationZ = accelerationToWiimote(
                     event.values[2],
-                    accelerometerCalibration.z,
+                    calibration.accelerometer.z,
                 )
             }
 
