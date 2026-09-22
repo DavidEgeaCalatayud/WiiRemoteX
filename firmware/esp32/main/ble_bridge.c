@@ -70,7 +70,7 @@ static esp_ble_adv_data_t s_adv_data = {
     .p_service_data = NULL,
     .service_uuid_len = sizeof(SERVICE_UUID),
     .p_service_uuid = (uint8_t *)SERVICE_UUID,
-    .flag = ESP_BLE_ADV_FLAG_GEN_DISC | ESP_BLE_ADV_FLAG_BREDR_NOT_SPT,
+    .flag = ESP_BLE_ADV_FLAG_GEN_DISC,
 };
 
 static bool uuid128_equal(
