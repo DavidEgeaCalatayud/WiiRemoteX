@@ -88,4 +88,37 @@ class WiimoteSessionEngineTest {
 
         assertTrue(result.state.infrared.enabled)
     }
+    @Test
+    fun `continuous reporting suppresses event driven motion and emits on scheduler tick`() {
+        val engine = WiimoteSessionEngine()
+        engine.onHostReport(0x12, byteArrayOf(0x04, 0x31))
+
+        val motionResult = engine.setMotion(
+            io.github.davidegeacalatayud.wiiremotex.core.model.MotionState(
+                accelerationX = 620,
+            ),
+        )
+
+        assertTrue(motionResult.effects.isEmpty())
+
+        val tick = engine.nextContinuousReport()
+        val effect = assertIs<WiimoteEffect.SendReport>(tick.effects.single())
+        assertEquals(0x31, effect.report.reportId)
+    }
+
+    @Test
+    fun `interleaved continuous reports alternate 0x3E and 0x3F`() {
+        val engine = WiimoteSessionEngine()
+        engine.onHostReport(0x12, byteArrayOf(0x04, 0x3E))
+
+        val first = assertIs<WiimoteEffect.SendReport>(
+            engine.nextContinuousReport().effects.single(),
+        )
+        val second = assertIs<WiimoteEffect.SendReport>(
+            engine.nextContinuousReport().effects.single(),
+        )
+
+        assertEquals(0x3F, first.report.reportId)
+        assertEquals(0x3E, second.report.reportId)
+    }
 }
