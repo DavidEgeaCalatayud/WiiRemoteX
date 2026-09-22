@@ -9,7 +9,12 @@ typedef void (*ble_bridge_packet_callback_t)(
     size_t packet_length
 );
 
-void ble_bridge_init(ble_bridge_packet_callback_t callback);
+typedef void (*ble_bridge_connection_callback_t)(bool connected);
+
+void ble_bridge_init(
+    ble_bridge_packet_callback_t packet_callback,
+    ble_bridge_connection_callback_t connection_callback
+);
 
 bool ble_bridge_notify_packet(
     const uint8_t *packet,
