@@ -86,12 +86,33 @@ class WiimoteDataReportEncoderTest {
                     gyroRoll = 0x1F7F,
                     gyroPitch = 0x1F7F,
                 ),
-                motionPlus = MotionPlusState(enabled = true),
+                motionPlus = MotionPlusState(present = true, active = true),
             ),
         )
 
         assertEquals(0x7F, report.payload[2].toInt() and 0xFF)
         assertEquals(0x7F, report.payload[3].toInt() and 0xFF)
         assertEquals(0x7F, report.payload[4].toInt() and 0xFF)
+    }
+    @Test
+    fun `interleaved mode alternates full IR halves with 21-byte payloads`() {
+        val state = WiimoteState(
+            reportMode = 0x3E,
+            infrared = InfraredState(
+                enabled = true,
+                points = listOf(
+                    InfraredPoint(x = 320, y = 240, size = 6, visible = true),
+                    InfraredPoint(x = 700, y = 240, size = 6, visible = true),
+                ),
+            ),
+        )
+
+        val first = encoder.encodeInterleaved(state, 0x3E)
+        val second = encoder.encodeInterleaved(state, 0x3F)
+
+        assertEquals(0x3E, first.reportId)
+        assertEquals(0x3F, second.reportId)
+        assertEquals(21, first.payload.size)
+        assertEquals(21, second.payload.size)
     }
 }
