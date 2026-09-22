@@ -9,13 +9,20 @@ import io.github.davidegeacalatayud.wiiremotex.core.model.MotionState
 import kotlin.math.PI
 import kotlin.math.roundToInt
 
+data class OrientationSample(
+    val yawRadians: Float,
+    val pitchRadians: Float,
+    val rollRadians: Float,
+)
+
 class AndroidMotionSource(
     context: Context,
     private val listener: Listener,
 ) : SensorEventListener {
 
-    fun interface Listener {
+    interface Listener {
         fun onMotionChanged(motion: MotionState)
+        fun onOrientationChanged(orientation: OrientationSample) = Unit
     }
 
     private val sensorManager =
@@ -27,6 +34,10 @@ class AndroidMotionSource(
     private val gyroscope =
         sensorManager.getDefaultSensor(Sensor.TYPE_GYROSCOPE)
 
+    private val rotationVector =
+        sensorManager.getDefaultSensor(Sensor.TYPE_GAME_ROTATION_VECTOR)
+            ?: sensorManager.getDefaultSensor(Sensor.TYPE_ROTATION_VECTOR)
+
     private var accelerationX = WIIMOTE_ZERO
     private var accelerationY = WIIMOTE_ZERO
     private var accelerationZ = WIIMOTE_ONE_G
@@ -35,7 +46,16 @@ class AndroidMotionSource(
     private var gyroRoll = MOTION_PLUS_ZERO
     private var gyroPitch = MOTION_PLUS_ZERO
 
-    private var lastEmissionNanos = 0L
+    private var gyroBiasX = 0f
+    private var gyroBiasY = 0f
+    private var gyroBiasZ = 0f
+
+    private var latestGyroX = 0f
+    private var latestGyroY = 0f
+    private var latestGyroZ = 0f
+
+    private var lastMotionEmissionNanos = 0L
+    private var lastOrientationEmissionNanos = 0L
 
     fun start(): Boolean {
         val accelRegistered = accelerometer?.let {
@@ -54,6 +74,14 @@ class AndroidMotionSource(
             )
         } ?: false
 
+        rotationVector?.let {
+            sensorManager.registerListener(
+                this,
+                it,
+                SensorManager.SENSOR_DELAY_GAME,
+            )
+        }
+
         return accelRegistered || gyroRegistered
     }
 
@@ -61,27 +89,41 @@ class AndroidMotionSource(
         sensorManager.unregisterListener(this)
     }
 
+    fun calibrateGyroscope() {
+        gyroBiasX = latestGyroX
+        gyroBiasY = latestGyroY
+        gyroBiasZ = latestGyroZ
+    }
+
     override fun onSensorChanged(event: SensorEvent) {
         when (event.sensor.type) {
             Sensor.TYPE_ACCELEROMETER -> {
-                // Android reports m/s². A real Wiimote is roughly 512 at 0G
-                // and ~640 at +1G, giving ~128 raw units/G.
                 accelerationX = accelerationToWiimote(event.values[0])
                 accelerationY = accelerationToWiimote(-event.values[1])
                 accelerationZ = accelerationToWiimote(event.values[2])
             }
 
             Sensor.TYPE_GYROSCOPE -> {
-                // Android reports rad/s. MotionPlus slow mode is about
-                // 13.768 raw units per degree/s around its ~0x1F7F center.
-                gyroPitch = angularVelocityToMotionPlus(event.values[0])
-                gyroRoll = angularVelocityToMotionPlus(-event.values[1])
-                gyroYaw = angularVelocityToMotionPlus(event.values[2])
+                latestGyroX = event.values[0]
+                latestGyroY = event.values[1]
+                latestGyroZ = event.values[2]
+
+                gyroPitch = angularVelocityToMotionPlus(event.values[0] - gyroBiasX)
+                gyroRoll = angularVelocityToMotionPlus(-(event.values[1] - gyroBiasY))
+                gyroYaw = angularVelocityToMotionPlus(event.values[2] - gyroBiasZ)
             }
+
+            Sensor.TYPE_GAME_ROTATION_VECTOR,
+            Sensor.TYPE_ROTATION_VECTOR,
+            -> emitOrientation(event)
         }
 
-        if (event.timestamp - lastEmissionNanos >= EMISSION_INTERVAL_NS) {
-            lastEmissionNanos = event.timestamp
+        if (
+            event.sensor.type != Sensor.TYPE_GAME_ROTATION_VECTOR &&
+            event.sensor.type != Sensor.TYPE_ROTATION_VECTOR &&
+            event.timestamp - lastMotionEmissionNanos >= MOTION_EMISSION_INTERVAL_NS
+        ) {
+            lastMotionEmissionNanos = event.timestamp
             listener.onMotionChanged(
                 MotionState(
                     accelerationX = accelerationX,
@@ -96,6 +138,27 @@ class AndroidMotionSource(
     }
 
     override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) = Unit
+
+    private fun emitOrientation(event: SensorEvent) {
+        if (event.timestamp - lastOrientationEmissionNanos < ORIENTATION_EMISSION_INTERVAL_NS) {
+            return
+        }
+
+        lastOrientationEmissionNanos = event.timestamp
+
+        val rotationMatrix = FloatArray(9)
+        val orientation = FloatArray(3)
+        SensorManager.getRotationMatrixFromVector(rotationMatrix, event.values)
+        SensorManager.getOrientation(rotationMatrix, orientation)
+
+        listener.onOrientationChanged(
+            OrientationSample(
+                yawRadians = orientation[0],
+                pitchRadians = orientation[1],
+                rollRadians = orientation[2],
+            ),
+        )
+    }
 
     private fun accelerationToWiimote(valueMs2: Float): Int {
         val g = valueMs2 / SensorManager.GRAVITY_EARTH
@@ -119,6 +182,7 @@ class AndroidMotionSource(
         const val MOTION_PLUS_ZERO = 0x1F7F
         const val MOTION_PLUS_UNITS_PER_DEGREE = 13.768
 
-        const val EMISSION_INTERVAL_NS = 20_000_000L // 50 Hz
+        const val MOTION_EMISSION_INTERVAL_NS = 20_000_000L
+        const val ORIENTATION_EMISSION_INTERVAL_NS = 16_000_000L
     }
 }
