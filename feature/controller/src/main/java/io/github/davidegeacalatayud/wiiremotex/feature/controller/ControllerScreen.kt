@@ -59,6 +59,9 @@ fun ControllerScreen(
     onNunchukC: (Boolean) -> Unit,
     onNunchukZ: (Boolean) -> Unit,
     onMotionPlusEnabled: (Boolean) -> Unit,
+    motionPointerEnabled: Boolean,
+    onMotionPointerEnabled: (Boolean) -> Unit,
+    onRecenterMotionPointer: () -> Unit,
 ) {
     Column(
         modifier = Modifier
@@ -120,8 +123,11 @@ fun ControllerScreen(
 
         IrPointerCard(
             enabled = wiimoteState.infrared.enabled,
+            motionPointerEnabled = motionPointerEnabled,
             onEnabled = onIrEnabled,
             onPointer = onIrPointer,
+            onMotionPointerEnabled = onMotionPointerEnabled,
+            onRecenterMotionPointer = onRecenterMotionPointer,
         )
 
         NunchukCard(
@@ -220,8 +226,11 @@ private fun MotionCard(state: WiimoteState) {
 @Composable
 private fun IrPointerCard(
     enabled: Boolean,
+    motionPointerEnabled: Boolean,
     onEnabled: (Boolean) -> Unit,
     onPointer: (Float, Float) -> Unit,
+    onMotionPointerEnabled: (Boolean) -> Unit,
+    onRecenterMotionPointer: () -> Unit,
 ) {
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(
@@ -238,6 +247,31 @@ private fun IrPointerCard(
                     Text("Touch/drag trackpad → two virtual IR dots", style = MaterialTheme.typography.bodySmall)
                 }
                 Switch(checked = enabled, onCheckedChange = onEnabled)
+            }
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column {
+                    Text("Motion Pointer", fontWeight = FontWeight.SemiBold)
+                    Text(
+                        "Phone orientation → virtual IR coordinates",
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
+                Switch(
+                    checked = motionPointerEnabled,
+                    onCheckedChange = onMotionPointerEnabled,
+                )
+            }
+
+            Button(
+                onClick = onRecenterMotionPointer,
+                enabled = motionPointerEnabled,
+            ) {
+                Text("Recenter pointer")
             }
 
             Surface(
