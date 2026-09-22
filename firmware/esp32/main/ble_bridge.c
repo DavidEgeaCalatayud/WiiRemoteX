@@ -6,11 +6,20 @@
 #include "esp_gatt_common_api.h"
 #include "esp_gatts_api.h"
 #include "esp_log.h"
+#include "freertos/FreeRTOS.h"
 
 static const char *TAG = "ios_ble_bridge";
 
 #define BRIDGE_APP_ID 0x52
 #define BRIDGE_SERVICE_HANDLES 8
+#define BRIDGE_TX_QUEUE_CAPACITY 64
+#define BRIDGE_TX_MAX_RETRIES 2
+
+typedef struct {
+    uint8_t data[20];
+    uint8_t length;
+    uint8_t retries;
+} bridge_tx_packet_t;
 
 /*
  * ESP-IDF stores custom 128-bit UUID bytes least-significant byte first.
@@ -43,7 +52,15 @@ static uint16_t s_bridge_to_phone_ccc_handle;
 static uint16_t s_conn_id;
 
 static bool s_connected;
-static bool s_notifications_enabled;
+static bool s_indications_enabled;
+static bool s_tx_in_flight;
+static bool s_congested;
+
+static bridge_tx_packet_t s_tx_queue[BRIDGE_TX_QUEUE_CAPACITY];
+static size_t s_tx_head;
+static size_t s_tx_tail;
+static size_t s_tx_count;
+static portMUX_TYPE s_tx_lock = portMUX_INITIALIZER_UNLOCKED;
 
 static ble_bridge_packet_callback_t s_packet_callback;
 static ble_bridge_connection_callback_t s_connection_callback;
@@ -102,6 +119,118 @@ static void send_write_response(
             ESP_GATT_OK,
             NULL
         );
+    }
+}
+
+static void reset_tx_queue(void) {
+    portENTER_CRITICAL(&s_tx_lock);
+    s_tx_head = 0;
+    s_tx_tail = 0;
+    s_tx_count = 0;
+    s_tx_in_flight = false;
+    s_congested = false;
+    portEXIT_CRITICAL(&s_tx_lock);
+}
+
+static bool enqueue_tx_packet(
+    const uint8_t *packet,
+    size_t packet_length
+) {
+    bool queued = false;
+
+    portENTER_CRITICAL(&s_tx_lock);
+    if (
+        s_connected &&
+        s_indications_enabled &&
+        s_tx_count < BRIDGE_TX_QUEUE_CAPACITY
+    ) {
+        bridge_tx_packet_t *slot = &s_tx_queue[s_tx_tail];
+        memcpy(slot->data, packet, packet_length);
+        slot->length = (uint8_t)packet_length;
+        slot->retries = 0;
+
+        s_tx_tail = (s_tx_tail + 1U) % BRIDGE_TX_QUEUE_CAPACITY;
+        s_tx_count++;
+        queued = true;
+    }
+    portEXIT_CRITICAL(&s_tx_lock);
+
+    return queued;
+}
+
+static void advance_tx_head(void) {
+    s_tx_head = (s_tx_head + 1U) % BRIDGE_TX_QUEUE_CAPACITY;
+    s_tx_count--;
+}
+
+static void drain_tx_queue(void) {
+    for (;;) {
+        bridge_tx_packet_t packet;
+        esp_gatt_if_t gatts_if = ESP_GATT_IF_NONE;
+        uint16_t conn_id = 0;
+        uint16_t handle = 0;
+        bool should_send = false;
+
+        portENTER_CRITICAL(&s_tx_lock);
+        if (
+            s_connected &&
+            s_indications_enabled &&
+            !s_congested &&
+            !s_tx_in_flight &&
+            s_tx_count > 0 &&
+            s_gatts_if != ESP_GATT_IF_NONE &&
+            s_bridge_to_phone_handle != 0
+        ) {
+            packet = s_tx_queue[s_tx_head];
+            gatts_if = s_gatts_if;
+            conn_id = s_conn_id;
+            handle = s_bridge_to_phone_handle;
+            s_tx_in_flight = true;
+            should_send = true;
+        }
+        portEXIT_CRITICAL(&s_tx_lock);
+
+        if (!should_send) {
+            return;
+        }
+
+        const esp_err_t result = esp_ble_gatts_send_indicate(
+            gatts_if,
+            conn_id,
+            handle,
+            packet.length,
+            packet.data,
+            true
+        );
+
+        if (result == ESP_OK) {
+            return;
+        }
+
+        bool retry = false;
+        portENTER_CRITICAL(&s_tx_lock);
+        s_tx_in_flight = false;
+        if (s_tx_count > 0) {
+            bridge_tx_packet_t *head = &s_tx_queue[s_tx_head];
+            if (head->retries < BRIDGE_TX_MAX_RETRIES) {
+                head->retries++;
+                retry = true;
+            } else {
+                advance_tx_head();
+            }
+        }
+        portEXIT_CRITICAL(&s_tx_lock);
+
+        ESP_LOGW(
+            TAG,
+            "BLE indication enqueue failed: %s%s",
+            esp_err_to_name(result),
+            retry ? " (retrying)" : " (dropped after retries)"
+        );
+
+        if (!retry) {
+            continue;
+        }
     }
 }
 
@@ -205,7 +334,7 @@ static void gatts_event_handler(
                         s_service_handle,
                         &rx_uuid,
                         ESP_GATT_PERM_READ,
-                        ESP_GATT_CHAR_PROP_BIT_NOTIFY |
+                        ESP_GATT_CHAR_PROP_BIT_INDICATE |
                             ESP_GATT_CHAR_PROP_BIT_READ,
                         NULL,
                         NULL
@@ -242,15 +371,17 @@ static void gatts_event_handler(
             break;
 
         case ESP_GATTS_CONNECT_EVT:
+            reset_tx_queue();
             s_connected = true;
-            s_notifications_enabled = false;
+            s_indications_enabled = false;
             s_conn_id = param->connect.conn_id;
-            ESP_LOGI(TAG, "iPhone BLE central connected; waiting for notification subscription");
+            ESP_LOGI(TAG, "iPhone BLE central connected; waiting for indication subscription");
             break;
 
         case ESP_GATTS_DISCONNECT_EVT:
             s_connected = false;
-            s_notifications_enabled = false;
+            s_indications_enabled = false;
+            reset_tx_queue();
             ESP_LOGI(TAG, "iPhone BLE central disconnected");
             if (s_connection_callback != NULL) {
                 s_connection_callback(false);
@@ -287,20 +418,24 @@ static void gatts_event_handler(
                 const uint16_t ccc =
                     (uint16_t)param->write.value[0] |
                     ((uint16_t)param->write.value[1] << 8);
-                const bool was_enabled = s_notifications_enabled;
-                s_notifications_enabled = (ccc & 0x0001) != 0;
+                const bool was_enabled = s_indications_enabled;
+                s_indications_enabled = (ccc & 0x0002) != 0;
                 ESP_LOGI(
                     TAG,
-                    "BLE bridge notifications %s",
-                    s_notifications_enabled ? "enabled" : "disabled"
+                    "BLE bridge indications %s",
+                    s_indications_enabled ? "enabled" : "disabled"
                 );
                 send_write_response(gatts_if, param);
 
                 if (
                     s_connection_callback != NULL &&
-                    was_enabled != s_notifications_enabled
+                    was_enabled != s_indications_enabled
                 ) {
-                    s_connection_callback(s_notifications_enabled);
+                    s_connection_callback(s_indications_enabled);
+                }
+
+                if (s_indications_enabled) {
+                    drain_tx_queue();
                 }
                 break;
             }
@@ -308,6 +443,57 @@ static void gatts_event_handler(
             send_write_response(gatts_if, param);
             break;
         }
+
+        case ESP_GATTS_CONF_EVT: {
+            bool dropped = false;
+            bool retrying = false;
+
+            portENTER_CRITICAL(&s_tx_lock);
+            if (s_tx_in_flight && s_tx_count > 0) {
+                bridge_tx_packet_t *head = &s_tx_queue[s_tx_head];
+
+                if (param->conf.status == ESP_GATT_OK) {
+                    advance_tx_head();
+                } else if (head->retries < BRIDGE_TX_MAX_RETRIES) {
+                    head->retries++;
+                    retrying = true;
+                } else {
+                    advance_tx_head();
+                    dropped = true;
+                }
+
+                s_tx_in_flight = false;
+            }
+            portEXIT_CRITICAL(&s_tx_lock);
+
+            if (param->conf.status != ESP_GATT_OK) {
+                ESP_LOGW(
+                    TAG,
+                    "BLE indication confirmation failed: status=%d%s",
+                    param->conf.status,
+                    retrying ? " (retrying)" : (dropped ? " (dropped)" : "")
+                );
+            }
+
+            drain_tx_queue();
+            break;
+        }
+
+        case ESP_GATTS_CONGEST_EVT:
+            portENTER_CRITICAL(&s_tx_lock);
+            s_congested = param->congest.congested;
+            portEXIT_CRITICAL(&s_tx_lock);
+
+            ESP_LOGW(
+                TAG,
+                "BLE GATT connection %s",
+                param->congest.congested ? "congested" : "recovered"
+            );
+
+            if (!param->congest.congested) {
+                drain_tx_queue();
+            }
+            break;
 
         default:
             break;
@@ -326,15 +512,11 @@ void ble_bridge_init(
     ESP_ERROR_CHECK(esp_ble_gatts_app_register(BRIDGE_APP_ID));
 }
 
-bool ble_bridge_notify_packet(
+bool ble_bridge_send_packet(
     const uint8_t *packet,
     size_t packet_length
 ) {
     if (
-        !s_connected ||
-        !s_notifications_enabled ||
-        s_gatts_if == ESP_GATT_IF_NONE ||
-        s_bridge_to_phone_handle == 0 ||
         packet == NULL ||
         packet_length == 0 ||
         packet_length > 20
@@ -342,20 +524,16 @@ bool ble_bridge_notify_packet(
         return false;
     }
 
-    const esp_err_t result = esp_ble_gatts_send_indicate(
-        s_gatts_if,
-        s_conn_id,
-        s_bridge_to_phone_handle,
-        packet_length,
-        (uint8_t *)packet,
-        false
-    );
-
-    if (result != ESP_OK) {
-        ESP_LOGW(TAG, "BLE notify failed: %s", esp_err_to_name(result));
+    if (!enqueue_tx_packet(packet, packet_length)) {
+        ESP_LOGW(
+            TAG,
+            "BLE TX queue unavailable or full (depth=%u)",
+            (unsigned)s_tx_count
+        );
         return false;
     }
 
+    drain_tx_queue();
     return true;
 }
 
