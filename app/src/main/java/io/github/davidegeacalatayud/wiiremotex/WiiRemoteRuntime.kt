@@ -8,26 +8,28 @@ import android.os.Build
 import android.os.VibrationEffect
 import android.os.Vibrator
 import android.os.VibratorManager
+import io.github.davidegeacalatayud.wiiremotex.core.model.ExtensionState
+import io.github.davidegeacalatayud.wiiremotex.core.model.ExtensionType
+import io.github.davidegeacalatayud.wiiremotex.core.model.MotionPlusState
+import io.github.davidegeacalatayud.wiiremotex.core.model.MotionState
 import io.github.davidegeacalatayud.wiiremotex.core.model.WiiButton
 import io.github.davidegeacalatayud.wiiremotex.core.model.WiimoteState
 import io.github.davidegeacalatayud.wiiremotex.core.session.SessionResult
+import io.github.davidegeacalatayud.wiiremotex.core.session.VirtualIrCamera
 import io.github.davidegeacalatayud.wiiremotex.core.session.WiimoteEffect
 import io.github.davidegeacalatayud.wiiremotex.core.session.WiimoteSessionEngine
 import io.github.davidegeacalatayud.wiiremotex.platform.bluetooth.AndroidHidTransport
+import io.github.davidegeacalatayud.wiiremotex.platform.sensors.AndroidMotionSource
 import java.time.LocalTime
 import java.time.format.DateTimeFormatter
+import kotlin.math.roundToInt
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 
 enum class HidStage {
-    IDLE,
-    STARTING,
-    REGISTERED,
-    CONNECTING,
-    CONNECTED,
-    ERROR,
+    IDLE, STARTING, REGISTERED, CONNECTING, CONNECTED, ERROR,
 }
 
 data class DiagnosticEntry(
@@ -36,11 +38,19 @@ data class DiagnosticEntry(
     val message: String,
 )
 
+data class SensorAvailability(
+    val accelerometer: Boolean = false,
+    val gyroscope: Boolean = false,
+    val rotationVector: Boolean = false,
+)
+
 data class WiiRemoteUiState(
     val hidStage: HidStage = HidStage.IDLE,
     val wiimote: WiimoteState = WiimoteState(),
     val diagnostics: List<DiagnosticEntry> = emptyList(),
     val lastError: String? = null,
+    val pointerCalibrated: Boolean = false,
+    val sensors: SensorAvailability = SensorAvailability(),
 )
 
 class WiiRemoteRuntime(
@@ -48,6 +58,7 @@ class WiiRemoteRuntime(
 ) : AndroidHidTransport.Listener {
 
     private val session = WiimoteSessionEngine()
+    private val virtualIrCamera = VirtualIrCamera()
     private val batteryManager = application.getSystemService(BatteryManager::class.java)
 
     private val transport = AndroidHidTransport(
@@ -55,7 +66,20 @@ class WiiRemoteRuntime(
         listener = this,
     )
 
-    private val _uiState = MutableStateFlow(WiiRemoteUiState())
+    private val motionSource = AndroidMotionSource(
+        context = application,
+        listener = AndroidMotionSource.Listener(::onMotionChanged),
+    )
+
+    private val _uiState = MutableStateFlow(
+        WiiRemoteUiState(
+            sensors = SensorAvailability(
+                accelerometer = motionSource.capabilities.accelerometer,
+                gyroscope = motionSource.capabilities.gyroscope,
+                rotationVector = motionSource.capabilities.rotationVector,
+            ),
+        ),
+    )
     val uiState: StateFlow<WiiRemoteUiState> = _uiState.asStateFlow()
 
     fun startHid() {
@@ -71,7 +95,10 @@ class WiiRemoteRuntime(
         }
 
         updateBatteryFromSystem()
+        motionSource.start()
+        logSensorCapabilities()
         log("SYS", "Starting Android HID Device profile")
+
         _uiState.update {
             it.copy(
                 hidStage = HidStage.STARTING,
@@ -85,9 +112,11 @@ class WiiRemoteRuntime(
     }
 
     fun stopHid() {
+        motionSource.stop()
         setRumble(false)
         transport.stop()
         log("SYS", "HID runtime stopped")
+
         _uiState.update {
             it.copy(
                 hidStage = HidStage.IDLE,
@@ -101,12 +130,63 @@ class WiiRemoteRuntime(
         apply(session.setButton(button, pressed))
     }
 
-    override fun onRegistrationChanged(registered: Boolean) {
+    fun calibratePointer() {
+        val orientation = session.state.motion.orientation
+        virtualIrCamera.calibrate(orientation)
+        _uiState.update { it.copy(pointerCalibrated = true) }
+        updateVirtualIr(emitReport = _uiState.value.hidStage == HidStage.CONNECTED)
         log(
             "SYS",
-            if (registered) "HID application registered" else "HID application unregistered",
+            "IR pointer calibrated at yaw=${orientation.yawDegrees.format1()} " +
+                "pitch=${orientation.pitchDegrees.format1()}",
         )
+    }
 
+    fun selectExtension(type: ExtensionType) {
+        val extension = when (type) {
+            ExtensionType.NONE -> ExtensionState.None
+            ExtensionType.NUNCHUK -> ExtensionState.Nunchuk()
+            ExtensionType.MOTION_PLUS -> ExtensionState.MotionPlus(
+                MotionPlusState(active = false),
+            )
+        }
+
+        session.setExtension(extension, emitReport = false)
+        publishSessionState()
+        log("SYS", "Virtual extension selected: $type")
+
+        if (_uiState.value.hidStage == HidStage.CONNECTED && type != ExtensionType.MOTION_PLUS) {
+            apply(session.emitStatusReport())
+        }
+    }
+
+    fun setNunchukStick(x: Int, y: Int) {
+        val current = session.state.extension as? ExtensionState.Nunchuk ?: return
+        val next = current.copy(
+            value = current.value.copy(
+                stickX = x.coerceIn(0, 255),
+                stickY = y.coerceIn(0, 255),
+            ),
+        )
+        applyExtensionUpdate(next)
+    }
+
+    fun setNunchukCPressed(pressed: Boolean) {
+        val current = session.state.extension as? ExtensionState.Nunchuk ?: return
+        applyExtensionUpdate(
+            current.copy(value = current.value.copy(cPressed = pressed)),
+        )
+    }
+
+    fun setNunchukZPressed(pressed: Boolean) {
+        val current = session.state.extension as? ExtensionState.Nunchuk ?: return
+        applyExtensionUpdate(
+            current.copy(value = current.value.copy(zPressed = pressed)),
+        )
+    }
+
+    override fun onRegistrationChanged(registered: Boolean) {
+        log("SYS", if (registered) "HID application registered" else "HID application unregistered")
         _uiState.update {
             it.copy(
                 hidStage = if (registered) HidStage.REGISTERED else HidStage.IDLE,
@@ -115,10 +195,7 @@ class WiiRemoteRuntime(
         }
     }
 
-    override fun onConnectionStateChanged(
-        device: BluetoothDevice?,
-        state: Int,
-    ) {
+    override fun onConnectionStateChanged(device: BluetoothDevice?, state: Int) {
         val stage = when (state) {
             BluetoothProfile.STATE_CONNECTING -> HidStage.CONNECTING
             BluetoothProfile.STATE_CONNECTED -> HidStage.CONNECTED
@@ -129,12 +206,13 @@ class WiiRemoteRuntime(
 
         log("SYS", "Bluetooth connection state: ${connectionStateName(state)}")
         _uiState.update { it.copy(hidStage = stage) }
+
+        if (stage == HidStage.CONNECTED) {
+            updateVirtualIr(emitReport = false)
+        }
     }
 
-    override fun onHostReport(
-        reportId: Int,
-        payload: ByteArray,
-    ) {
+    override fun onHostReport(reportId: Int, payload: ByteArray) {
         log("RX", "0x${reportId.hex2()} ${payload.toHex()}")
 
         if (reportId == 0x15) {
@@ -142,20 +220,93 @@ class WiiRemoteRuntime(
         }
 
         val rumbleBefore = session.state.rumbleEnabled
+        val extensionBefore = session.state.extension
         val result = session.onHostReport(reportId, payload)
         apply(result)
 
         if (result.state.rumbleEnabled != rumbleBefore) {
             setRumble(result.state.rumbleEnabled)
         }
+
+        if (reportId == 0x13 || reportId == 0x1A) {
+            updateVirtualIr(emitReport = false)
+        }
+
+        if (result.state.extension != extensionBefore) {
+            publishSessionState()
+            log("SYS", "Extension state changed by host: ${extensionLabel(result.state.extension)}")
+        }
     }
 
-    override fun onError(
-        message: String,
-        cause: Throwable?,
-    ) {
+    override fun onError(message: String, cause: Throwable?) {
         val detail = cause?.message ?: cause?.let { it::class.simpleName }
         fail(if (detail == null) message else "$message: $detail")
+    }
+
+    private fun onMotionChanged(motion: MotionState) {
+        session.setMotion(motion, emitReport = false)
+
+        when (val extension = session.state.extension) {
+            ExtensionState.None -> Unit
+
+            is ExtensionState.Nunchuk -> {
+                val value = extension.value.copy(
+                    accelerationX = accelerationToTenBit(motion.accelerationG.x),
+                    accelerationY = accelerationToTenBit(motion.accelerationG.y),
+                    accelerationZ = accelerationToTenBit(motion.accelerationG.z),
+                )
+                session.setExtension(extension.copy(value = value), emitReport = false)
+            }
+
+            is ExtensionState.MotionPlus -> {
+                val gyro = motion.angularVelocityDegPerSec
+                val value = extension.value.copy(
+                    yawDegPerSec = -gyro.z,
+                    rollDegPerSec = gyro.x,
+                    pitchDegPerSec = gyro.y,
+                )
+                session.setExtension(extension.copy(value = value), emitReport = false)
+            }
+        }
+
+        updateVirtualIr(emitReport = false)
+        publishSessionState()
+
+        if (
+            _uiState.value.hidStage == HidStage.CONNECTED &&
+            session.state.reportMode in SENSOR_REPORT_MODES
+        ) {
+            apply(session.emitCurrentDataReport())
+        }
+    }
+
+    private fun updateVirtualIr(emitReport: Boolean) {
+        if (!virtualIrCamera.isCalibrated()) {
+            publishSessionState()
+            return
+        }
+
+        val projected = virtualIrCamera.project(
+            orientation = session.state.motion.orientation,
+            enabled = session.state.infrared.enabled,
+        )
+        val result = session.setInfrared(projected, emitReport = emitReport)
+
+        if (emitReport) apply(result) else publishSessionState()
+    }
+
+    private fun applyExtensionUpdate(extension: ExtensionState.Nunchuk) {
+        val result = session.setExtension(
+            extension = extension,
+            emitReport =
+                _uiState.value.hidStage == HidStage.CONNECTED &&
+                    session.state.reportMode in EXTENSION_REPORT_MODES,
+        )
+        if (result.effects.isEmpty()) publishSessionState() else apply(result)
+    }
+
+    private fun publishSessionState() {
+        _uiState.update { it.copy(wiimote = session.state) }
     }
 
     private fun updateBatteryFromSystem() {
@@ -185,17 +336,13 @@ class WiiRemoteRuntime(
             return
         }
 
-        val effect = VibrationEffect.createWaveform(
-            longArrayOf(0L, 1_000L),
-            0,
-        )
+        val effect = VibrationEffect.createWaveform(longArrayOf(0L, 1_000L), 0)
         vibrator.vibrate(effect)
         log("SYS", "Rumble ON")
     }
 
     private fun apply(result: SessionResult) {
         _uiState.update { it.copy(wiimote = result.state) }
-
         result.effects.forEach { effect ->
             when (effect) {
                 is WiimoteEffect.SendReport -> {
@@ -210,12 +357,15 @@ class WiiRemoteRuntime(
 
     private fun fail(message: String) {
         log("ERR", message)
-        _uiState.update {
-            it.copy(
-                hidStage = HidStage.ERROR,
-                lastError = message,
-            )
-        }
+        _uiState.update { it.copy(hidStage = HidStage.ERROR, lastError = message) }
+    }
+
+    private fun logSensorCapabilities() {
+        val caps = motionSource.capabilities
+        log(
+            "SYS",
+            "Sensors accel=${caps.accelerometer} gyro=${caps.gyroscope} rotation=${caps.rotationVector}",
+        )
     }
 
     private fun log(direction: String, message: String) {
@@ -224,11 +374,8 @@ class WiiRemoteRuntime(
             direction = direction,
             message = message,
         )
-
         _uiState.update {
-            it.copy(
-                diagnostics = (it.diagnostics + entry).takeLast(MAX_LOG_LINES),
-            )
+            it.copy(diagnostics = (it.diagnostics + entry).takeLast(MAX_LOG_LINES))
         }
     }
 
@@ -240,16 +387,28 @@ class WiiRemoteRuntime(
         else -> "UNKNOWN($state)"
     }
 
+    private fun accelerationToTenBit(g: Float): Int =
+        (512f + g * 102.4f).roundToInt().coerceIn(0, 1023)
+
+    private fun extensionLabel(extension: ExtensionState): String = when (extension) {
+        ExtensionState.None -> "NONE"
+        is ExtensionState.Nunchuk -> "NUNCHUK"
+        is ExtensionState.MotionPlus ->
+            if (extension.value.active) "MOTION_PLUS_ACTIVE" else "MOTION_PLUS_INACTIVE"
+    }
+
+    private fun Float.format1(): String = "%.1f".format(this)
+
     private fun Int.hex2(): String =
         toString(16).uppercase().padStart(2, '0')
 
     private fun ByteArray.toHex(): String =
-        joinToString(" ") { byte ->
-            (byte.toInt() and 0xFF).hex2()
-        }
+        joinToString(" ") { byte -> (byte.toInt() and 0xFF).hex2() }
 
     private companion object {
-        const val MAX_LOG_LINES = 120
+        const val MAX_LOG_LINES = 160
+        val SENSOR_REPORT_MODES = setOf(0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37, 0x3D)
+        val EXTENSION_REPORT_MODES = setOf(0x32, 0x34, 0x35, 0x36, 0x37, 0x3D)
         val TIME_FORMAT: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm:ss.SSS")
     }
 }
