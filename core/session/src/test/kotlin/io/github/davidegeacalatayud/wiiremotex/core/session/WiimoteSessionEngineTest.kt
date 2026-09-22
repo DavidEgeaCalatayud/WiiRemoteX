@@ -121,4 +121,66 @@ class WiimoteSessionEngineTest {
         assertEquals(0x3F, first.report.reportId)
         assertEquals(0x3E, second.report.reportId)
     }
+    @Test
+    fun `32 byte EEPROM read is split into two 0x21 reports`() {
+        val engine = WiimoteSessionEngine()
+
+        val result = engine.onHostReport(
+            0x17,
+            byteArrayOf(
+                0x00,
+                0x00,
+                0x00,
+                0x00,
+                0x00,
+                0x20,
+            ),
+        )
+
+        assertEquals(2, result.effects.size)
+
+        val first = assertIs<WiimoteEffect.SendReport>(result.effects[0])
+        val second = assertIs<WiimoteEffect.SendReport>(result.effects[1])
+
+        assertEquals(0x21, first.report.reportId)
+        assertEquals(0x21, second.report.reportId)
+        assertEquals(0x00, first.report.payload[3].toInt() and 0xFF)
+        assertEquals(0x00, first.report.payload[4].toInt() and 0xFF)
+        assertEquals(0x00, second.report.payload[3].toInt() and 0xFF)
+        assertEquals(0x10, second.report.payload[4].toInt() and 0xFF)
+    }
+
+    @Test
+    fun `EEPROM write can be read back through host protocol`() {
+        val engine = WiimoteSessionEngine()
+        val write = ByteArray(21)
+        write[0] = 0x00
+        write[1] = 0x00
+        write[2] = 0x01
+        write[3] = 0x00
+        write[4] = 0x03
+        write[5] = 0x12
+        write[6] = 0x34
+        write[7] = 0x56
+
+        engine.onHostReport(0x16, write)
+
+        val read = engine.onHostReport(
+            0x17,
+            byteArrayOf(
+                0x00,
+                0x00,
+                0x01,
+                0x00,
+                0x00,
+                0x03,
+            ),
+        )
+
+        val effect = assertIs<WiimoteEffect.SendReport>(read.effects.single())
+        assertContentEquals(
+            byteArrayOf(0x12, 0x34, 0x56),
+            effect.report.payload.copyOfRange(5, 8),
+        )
+    }
 }
