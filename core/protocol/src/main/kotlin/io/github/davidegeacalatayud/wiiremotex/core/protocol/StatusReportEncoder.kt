@@ -15,7 +15,13 @@ class StatusReportEncoder(
         if (state.leds.three) flags = flags or 0x40
         if (state.leds.four) flags = flags or 0x80
         if (state.batteryLevel <= LOW_BATTERY_THRESHOLD) flags = flags or 0x01
-        if (state.extension !is ExtensionState.None) flags = flags or 0x02
+        val extensionVisible =
+            when (val extension = state.extension) {
+                ExtensionState.None -> false
+                is ExtensionState.Nunchuk -> true
+                is ExtensionState.MotionPlus -> extension.value.active
+            }
+        if (extensionVisible) flags = flags or 0x02
         if (state.infrared.enabled) flags = flags or 0x08
 
         return HidInputReport(
