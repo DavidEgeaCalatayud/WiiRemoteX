@@ -40,6 +40,11 @@ class WiimoteSessionEngine(
         )
     }
 
+    fun setBatteryLevel(level: Int): WiimoteState {
+        state = state.copy(batteryLevel = level.coerceIn(0, 0xFF))
+        return state
+    }
+
     fun onHostReport(reportId: Int, payload: ByteArray): SessionResult {
         val effects = when (val command = decoder.decode(reportId, payload)) {
             is HostCommand.SetPlayerLeds -> {
