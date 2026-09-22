@@ -32,9 +32,12 @@ class WiimoteSessionEngine(
     private val registerBank: WiimoteRegisterBank = WiimoteRegisterBank(),
     private val decoder: HostCommandDecoder = HostCommandDecoder(),
 ) {
+    private var nextInterleavedReportId: Int = 0x3E
+
     var state: WiimoteState = initialState
         private set
 
+    @Synchronized
     fun setButton(button: WiiButton, pressed: Boolean): SessionResult {
         val buttons = state.pressedButtons.toMutableSet().apply {
             if (pressed) add(button) else remove(button)
@@ -43,6 +46,7 @@ class WiimoteSessionEngine(
         return withCurrentDataReport()
     }
 
+    @Synchronized
     fun setMotion(motion: MotionState): SessionResult {
         state = state.copy(
             motion = motion,
@@ -59,6 +63,7 @@ class WiimoteSessionEngine(
         return withCurrentDataReportIf(reportModeIncludesMotion(state.reportMode))
     }
 
+    @Synchronized
     fun setInfrared(
         enabled: Boolean = state.infrared.enabled,
         points: List<InfraredPoint> = state.infrared.points,
@@ -72,21 +77,25 @@ class WiimoteSessionEngine(
         return withCurrentDataReportIf(reportModeIncludesIr(state.reportMode))
     }
 
+    @Synchronized
     fun setNunchuk(nunchuk: NunchukState): SessionResult {
         state = state.copy(nunchuk = nunchuk)
         return withCurrentDataReportIf(reportModeIncludesExtension(state.reportMode))
     }
 
+    @Synchronized
     fun setMotionPlus(motionPlus: MotionPlusState): SessionResult {
         state = state.copy(motionPlus = motionPlus)
         return withCurrentDataReportIf(reportModeIncludesExtension(state.reportMode))
     }
 
+    @Synchronized
     fun setBatteryLevel(level: Int): WiimoteState {
         state = state.copy(batteryLevel = level.coerceIn(0, 0xFF))
         return state
     }
 
+    @Synchronized
     fun onHostReport(reportId: Int, payload: ByteArray): SessionResult {
         val effects = when (val command = decoder.decode(reportId, payload)) {
             is HostCommand.SetPlayerLeds -> {
@@ -98,12 +107,16 @@ class WiimoteSessionEngine(
             }
 
             is HostCommand.SetReportMode -> {
+                if (command.reportMode == 0x3E || command.reportMode == 0x3F) {
+                    nextInterleavedReportId = 0x3E
+                }
+
                 state = state.copy(
                     reportMode = command.reportMode,
                     continuousReporting = command.continuous,
                     rumbleEnabled = command.rumbleEnabled,
                 )
-                listOf(WiimoteEffect.SendReport(dataEncoder.encode(state)))
+                listOf(WiimoteEffect.SendReport(encodeCurrentDataReport()))
             }
 
             is HostCommand.SetIrEnabled -> {
@@ -203,13 +216,37 @@ class WiimoteSessionEngine(
         return SessionResult(state = state, effects = effects)
     }
 
+    @Synchronized
+    fun nextContinuousReport(): SessionResult =
+        if (state.continuousReporting) {
+            SessionResult(
+                state = state,
+                effects = listOf(
+                    WiimoteEffect.SendReport(encodeCurrentDataReport()),
+                ),
+            )
+        } else {
+            SessionResult(state = state)
+        }
+
     private fun withCurrentDataReport(): SessionResult =
         SessionResult(
             state = state,
             effects = listOf(
-                WiimoteEffect.SendReport(dataEncoder.encode(state)),
+                WiimoteEffect.SendReport(encodeCurrentDataReport()),
             ),
         )
+
+    private fun encodeCurrentDataReport(): HidInputReport {
+        if (state.reportMode == 0x3E || state.reportMode == 0x3F) {
+            val reportId = nextInterleavedReportId
+            nextInterleavedReportId =
+                if (nextInterleavedReportId == 0x3E) 0x3F else 0x3E
+            return dataEncoder.encodeInterleaved(state, reportId)
+        }
+
+        return dataEncoder.encode(state)
+    }
 
     private fun withCurrentDataReportIf(condition: Boolean): SessionResult =
         if (condition) {
