@@ -37,6 +37,13 @@ class IosWiimoteEngine(
     var wiiConnectionState: Int = WiiConnectionState.DISCONNECTED
         private set
 
+    val wiiConnectionStateLabel: String
+        get() = when (wiiConnectionState) {
+            WiiConnectionState.CONNECTING -> "Connecting"
+            WiiConnectionState.CONNECTED -> "Connected"
+            else -> "Disconnected"
+        }
+
     val reportMode: Int
         get() = session.state.reportMode
 
