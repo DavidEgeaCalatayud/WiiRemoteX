@@ -323,7 +323,29 @@ class WiimoteSessionEngine(
                             ),
                         )
 
-                        if (result.activateMotionPlus || result.deactivateMotionPlus) {
+                        if (result.activateMotionPlus && !state.nunchuk.connected) {
+                            add(
+                                WiimoteEffect.SendReport(
+                                    statusEncoder.encode(state),
+                                ),
+                            )
+                        }
+
+                        if (result.deactivateMotionPlus) {
+                            if (state.nunchuk.connected) {
+                                add(
+                                    WiimoteEffect.SendReport(
+                                        statusEncoder.encode(
+                                            state.copy(
+                                                nunchuk = state.nunchuk.copy(
+                                                    connected = false,
+                                                ),
+                                            ),
+                                        ),
+                                    ),
+                                )
+                            }
+
                             add(
                                 WiimoteEffect.SendReport(
                                     statusEncoder.encode(state),
@@ -459,6 +481,6 @@ class WiimoteSessionEngine(
 
     private companion object {
         const val MOTION_PLUS_ZERO = 0x1F7F
-        const val MOTION_PLUS_FAST_THRESHOLD = 4_000
+        const val MOTION_PLUS_FAST_THRESHOLD = 6_000
     }
 }
