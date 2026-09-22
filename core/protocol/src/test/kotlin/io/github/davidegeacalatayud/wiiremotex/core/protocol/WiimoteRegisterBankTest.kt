@@ -13,11 +13,26 @@ class WiimoteRegisterBankTest {
     private val bank = WiimoteRegisterBank()
 
     @Test
-    fun `Nunchuk identifier is exposed at A400FA`() {
+    fun `Nunchuk identifier is exposed after new initialization sequence`() {
+        val state = WiimoteState(
+            nunchuk = NunchukState(connected = true),
+        )
+
+        assertEquals(null, bank.read(state, 0xA400FA, 6))
+
+        bank.write(
+            state = state,
+            address = 0xA400F0,
+            data = byteArrayOf(0x55),
+        )
+        bank.write(
+            state = state,
+            address = 0xA400FB,
+            data = byteArrayOf(0x00),
+        )
+
         val data = bank.read(
-            state = WiimoteState(
-                nunchuk = NunchukState(connected = true),
-            ),
+            state = state,
             address = 0xA400FA,
             size = 6,
         )
@@ -97,5 +112,41 @@ class WiimoteRegisterBankTest {
 
         assertEquals(false, result.success)
         assertEquals(false, result.activateMotionPlus)
+    }
+    @Test
+    fun `IR register bank stores mode and completes initialization on final control write`() {
+        val enabledState = WiimoteState(
+            infrared = io.github.davidegeacalatayud.wiiremotex.core.model.InfraredState(
+                enabled = true,
+                pixelClockEnabled = true,
+                logicEnabled = true,
+            ),
+        )
+
+        bank.write(enabledState, 0xB00000, byteArrayOf(
+            0x02, 0x00, 0x00, 0x71, 0x01, 0x00, 0xAA.toByte(), 0x00, 0x64,
+        ))
+        bank.write(enabledState, 0xB0001A, byteArrayOf(0x63, 0x03))
+
+        val mode = bank.write(
+            enabledState,
+            0xB00033,
+            byteArrayOf(0x03),
+        )
+        val finalControl = bank.write(
+            enabledState,
+            0xB00030,
+            byteArrayOf(0x08),
+        )
+
+        assertEquals(
+            io.github.davidegeacalatayud.wiiremotex.core.model.InfraredMode.EXTENDED,
+            mode.infraredMode,
+        )
+        assertEquals(true, finalControl.infraredConfigured)
+        assertContentEquals(
+            byteArrayOf(0x03),
+            bank.read(enabledState, 0xB00033, 1),
+        )
     }
 }
