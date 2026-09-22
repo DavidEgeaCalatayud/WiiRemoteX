@@ -5,6 +5,7 @@ import io.github.davidegeacalatayud.wiiremotex.core.model.NunchukState
 import io.github.davidegeacalatayud.wiiremotex.core.model.WiimoteState
 import kotlin.test.Test
 import kotlin.test.assertContentEquals
+import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
@@ -39,7 +40,7 @@ class WiimoteRegisterBankTest {
     fun `inactive MotionPlus identifier is exposed at A600FA`() {
         val data = bank.read(
             state = WiimoteState(
-                motionPlus = MotionPlusState(enabled = true),
+                motionPlus = MotionPlusState(present = true),
             ),
             address = 0xA600FA,
             size = 6,
@@ -69,5 +70,18 @@ class WiimoteRegisterBankTest {
 
         assertTrue(result.success)
         assertTrue(result.activateMotionPlus)
+    }
+    @Test
+    fun `MotionPlus calibration block is readable when present`() {
+        val data = bank.read(
+            state = WiimoteState(
+                motionPlus = MotionPlusState(present = true),
+            ),
+            address = 0xA60020,
+            size = 16,
+        )
+
+        assertNotNull(data)
+        assertEquals(16, data.size)
     }
 }
