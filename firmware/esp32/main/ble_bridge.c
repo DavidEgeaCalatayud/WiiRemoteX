@@ -245,10 +245,7 @@ static void gatts_event_handler(
             s_connected = true;
             s_notifications_enabled = false;
             s_conn_id = param->connect.conn_id;
-            ESP_LOGI(TAG, "iPhone BLE central connected");
-            if (s_connection_callback != NULL) {
-                s_connection_callback(true);
-            }
+            ESP_LOGI(TAG, "iPhone BLE central connected; waiting for notification subscription");
             break;
 
         case ESP_GATTS_DISCONNECT_EVT:
@@ -290,6 +287,7 @@ static void gatts_event_handler(
                 const uint16_t ccc =
                     (uint16_t)param->write.value[0] |
                     ((uint16_t)param->write.value[1] << 8);
+                const bool was_enabled = s_notifications_enabled;
                 s_notifications_enabled = (ccc & 0x0001) != 0;
                 ESP_LOGI(
                     TAG,
@@ -297,6 +295,13 @@ static void gatts_event_handler(
                     s_notifications_enabled ? "enabled" : "disabled"
                 );
                 send_write_response(gatts_if, param);
+
+                if (
+                    s_connection_callback != NULL &&
+                    was_enabled != s_notifications_enabled
+                ) {
+                    s_connection_callback(s_notifications_enabled);
+                }
                 break;
             }
 
