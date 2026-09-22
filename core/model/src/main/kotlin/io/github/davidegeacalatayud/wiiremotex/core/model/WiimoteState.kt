@@ -53,7 +53,8 @@ data class NunchukState(
 )
 
 data class MotionPlusState(
-    val enabled: Boolean = false,
+    val present: Boolean = false,
+    val active: Boolean = false,
     val yawSlow: Boolean = true,
     val rollSlow: Boolean = true,
     val pitchSlow: Boolean = true,
