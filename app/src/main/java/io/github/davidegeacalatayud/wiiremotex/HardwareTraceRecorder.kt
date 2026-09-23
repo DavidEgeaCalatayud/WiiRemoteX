@@ -58,6 +58,7 @@ class HardwareTraceRecorder(
         append("},\n")
         append("  \"events\": [\n")
         events.forEachIndexed { index, item ->
+            val reportId = item.reportId
             append("    {")
             append("\"timestamp_ns\":${item.timestampNs},")
             append("\"elapsed_realtime_ns\":${item.elapsedRealtimeNs},")
@@ -65,12 +66,12 @@ class HardwareTraceRecorder(
             append("\"transport\":\"${escape(item.transport)}\",")
             append("\"event\":\"${escape(item.event)}\",")
             append("\"report_id\":")
-            if (item.reportId == null) append("null") else append(item.reportId)
+            if (reportId == null) append("null") else append(reportId)
             append(",\"report_id_hex\":")
-            if (item.reportId == null) {
+            if (reportId == null) {
                 append("null")
             } else {
-                append("\"0x${item.reportId.toString(16).uppercase().padStart(2, '0')}\"")
+                append("\"0x${reportId.toString(16).uppercase().padStart(2, '0')}\"")
             }
             append(",\"payload_hex\":\"${item.payload.toHex()}\",")
             append("\"connection_state\":\"${escape(item.connectionState)}\",")
