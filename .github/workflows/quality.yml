@@ -42,6 +42,19 @@ jobs:
         continue-on-error: true
         run: gradle ktlintCheck
 
+  hil-harness:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+
+      - name: Compile HIL harness
+        run: python -m py_compile tools/hil/bridge_smoke.py
+
   swift-style-report:
     runs-on: macos-latest
     steps:
