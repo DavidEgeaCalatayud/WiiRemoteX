@@ -1,5 +1,11 @@
 package io.github.davidegeacalatayud.wiiremotex.shared
 
+import io.github.davidegeacalatayud.wiiremotex.core.protocol.bridge.BridgeFrameCodec
+import io.github.davidegeacalatayud.wiiremotex.core.protocol.bridge.BridgeFrameReassembler
+import io.github.davidegeacalatayud.wiiremotex.core.protocol.bridge.BridgeMessage
+import io.github.davidegeacalatayud.wiiremotex.core.protocol.bridge.BridgeMessageType
+import io.github.davidegeacalatayud.wiiremotex.core.protocol.bridge.BridgeStatusCode
+import io.github.davidegeacalatayud.wiiremotex.core.protocol.bridge.WiiConnectionState
 import kotlin.test.Test
 import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
@@ -49,6 +55,9 @@ class IosWiimoteEngineTest {
             payload = byteArrayOf(
                 BridgeStatusCode.BRIDGE_READY.toByte(),
                 BridgeFrameCodec.VERSION.toByte(),
+                0x00,
+                0x06,
+                0x00,
             ),
         )
 
@@ -57,6 +66,7 @@ class IosWiimoteEngineTest {
         assertTrue(engine.bridgeReady)
         assertTrue(engine.bridgeProtocolCompatible)
         assertEquals(BridgeFrameCodec.VERSION, engine.bridgeProtocolVersion)
+        assertEquals("0.6.0", engine.bridgeFirmwareVersion)
         assertEquals("Ready v1", engine.bridgeProtocolStatusLabel)
     }
 

@@ -21,6 +21,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
@@ -44,12 +45,20 @@ import io.github.davidegeacalatayud.wiiremotex.core.model.WiimoteState
 @Composable
 fun ControllerScreen(
     connectionLabel: String,
+    useEsp32Bridge: Boolean,
+    bridgeReady: Boolean,
+    bridgeProtocolVersion: Int?,
+    bridgeFirmwareVersion: String?,
     wiimoteState: WiimoteState,
     diagnosticLines: List<String>,
     lastError: String?,
+    onTransportChanged: (Boolean) -> Unit,
     onStartHid: () -> Unit,
     onMakeDiscoverable: () -> Unit,
     onStopHid: () -> Unit,
+    onStartWiiPairing: () -> Unit,
+    onStopWiiPairing: () -> Unit,
+    onClearWiiBond: () -> Unit,
     onShareDiagnostics: () -> Unit,
     onShareHardwareTrace: () -> Unit,
     onClearHardwareTrace: () -> Unit,
@@ -80,18 +89,31 @@ fun ControllerScreen(
                 fontWeight = FontWeight.Bold,
             )
             Text(
-                text = "Android → real Wii · Bluetooth HID emulator",
+                text =
+                    if (useEsp32Bridge) {
+                        "Android → BLE → ESP32 → Wii"
+                    } else {
+                        "Android → Wii · Bluetooth HID"
+                    },
                 style = MaterialTheme.typography.bodyMedium,
             )
         }
 
         ConnectionCard(
             connectionLabel = connectionLabel,
+            useEsp32Bridge = useEsp32Bridge,
+            bridgeReady = bridgeReady,
+            bridgeProtocolVersion = bridgeProtocolVersion,
+            bridgeFirmwareVersion = bridgeFirmwareVersion,
             wiimoteState = wiimoteState,
             lastError = lastError,
+            onTransportChanged = onTransportChanged,
             onStartHid = onStartHid,
             onMakeDiscoverable = onMakeDiscoverable,
             onStopHid = onStopHid,
+            onStartWiiPairing = onStartWiiPairing,
+            onStopWiiPairing = onStopWiiPairing,
+            onClearWiiBond = onClearWiiBond,
         )
 
         Text("Wii Remote", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
@@ -157,11 +179,19 @@ fun ControllerScreen(
 @Composable
 private fun ConnectionCard(
     connectionLabel: String,
+    useEsp32Bridge: Boolean,
+    bridgeReady: Boolean,
+    bridgeProtocolVersion: Int?,
+    bridgeFirmwareVersion: String?,
     wiimoteState: WiimoteState,
     lastError: String?,
+    onTransportChanged: (Boolean) -> Unit,
     onStartHid: () -> Unit,
     onMakeDiscoverable: () -> Unit,
     onStopHid: () -> Unit,
+    onStartWiiPairing: () -> Unit,
+    onStopWiiPairing: () -> Unit,
+    onClearWiiBond: () -> Unit,
 ) {
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(
@@ -173,6 +203,37 @@ private fun ConnectionCard(
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.SemiBold,
             )
+
+            Text("Transport", style = MaterialTheme.typography.labelMedium)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                FilterChip(
+                    selected = !useEsp32Bridge,
+                    onClick = { onTransportChanged(false) },
+                    label = { Text("Direct HID") },
+                )
+                FilterChip(
+                    selected = useEsp32Bridge,
+                    onClick = { onTransportChanged(true) },
+                    label = { Text("ESP32 Bridge") },
+                )
+            }
+
+            if (useEsp32Bridge) {
+                Text(
+                    text = buildString {
+                        append("Bridge: ")
+                        append(if (bridgeReady) "ready" else "waiting")
+                        bridgeProtocolVersion?.let { append(" · protocol v$it") }
+                        bridgeFirmwareVersion?.let { append(" · firmware $it") }
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                    fontFamily = FontFamily.Monospace,
+                )
+            }
+
             Text(
                 text = "Report mode: 0x${wiimoteState.reportMode.toString(16).uppercase().padStart(2, '0')} · " +
                     "Rumble: ${if (wiimoteState.rumbleEnabled) "ON" else "OFF"}",
@@ -195,9 +256,39 @@ private fun ConnectionCard(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                Button(onClick = onStartHid) { Text("Start HID") }
-                Button(onClick = onMakeDiscoverable) { Text("Visible") }
+                Button(onClick = onStartHid) {
+                    Text(if (useEsp32Bridge) "Connect bridge" else "Start HID")
+                }
+                if (!useEsp32Bridge) {
+                    Button(onClick = onMakeDiscoverable) { Text("Visible") }
+                }
                 Button(onClick = onStopHid) { Text("Stop") }
+            }
+
+            if (useEsp32Bridge) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Button(
+                        onClick = onStartWiiPairing,
+                        enabled = bridgeReady,
+                    ) {
+                        Text("Pair Wii")
+                    }
+                    Button(
+                        onClick = onStopWiiPairing,
+                        enabled = bridgeReady,
+                    ) {
+                        Text("Stop pairing")
+                    }
+                }
+                Button(
+                    onClick = onClearWiiBond,
+                    enabled = bridgeReady,
+                ) {
+                    Text("Clear Wii bond")
+                }
             }
         }
     }

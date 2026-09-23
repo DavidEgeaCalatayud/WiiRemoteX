@@ -1,8 +1,8 @@
 # WiiRemoteX
 
-**WiiRemoteX** is an experimental multiplatform Wii Remote emulation project. One protocol/session engine can drive a **real Nintendo Wii** through replaceable transports: Android can use Bluetooth HID directly or fall back to an ESP32 bridge, while iPhone uses that same ESP32 BLE bridge.
+**WiiRemoteX** is an experimental multiplatform Wii Remote emulation project. One Kotlin Multiplatform protocol/session core can drive a **real Nintendo Wii** through replaceable transports: Android can use Bluetooth HID directly or fall back to an ESP32 bridge, while iPhone uses that same ESP32 BLE bridge.
 
-> Status: **0.5.x hardware-validation + multiplatform foundation**. Android, the shared Kotlin engine, iOS frontend and ESP32 bridge are developed independently around the same Wii protocol model.
+> Status: **0.5.x hardware-validation + multiplatform foundation**. Android, the shared Kotlin core, iOS frontend and ESP32 bridge are developed independently around the same Wii protocol model.
 
 ## Goal
 
@@ -56,15 +56,16 @@ The first hardware success criterion remains deliberately small: **press A on th
 
 ## Modules
 
-- `:core:model` — Android-free Wii Remote domain state.
-- `:core:protocol` — HID reports, host decoder, Wii HID descriptor and the common ESP32 bridge framing protocol.
-- `:core:session` — `WiimoteSessionEngine`, reducer/state machine and transport port.
-- `:platform:bluetooth` — direct Android `BluetoothHidDevice` adapter.
+- `:core:model` — Kotlin Multiplatform Wii Remote domain state.
+- `:core:protocol` — multiplatform HID reports, host decoder, Wii HID descriptor and common ESP32 bridge framing.
+- `:core:session` — multiplatform `WiimoteSessionEngine`, reducer/state machine and transport port.
+- `:core:trace` — shared hardware-trace schema and state formatting.
+- `:transports:android-hid` — direct Android `BluetoothHidDevice` adapter.
+- `:transports:esp32-ble` — Android BLE fallback using the same ESP32 bridge protocol as iOS.
 - `:platform:sensors` — Android motion/orientation source and calibration persistence.
-- `:transports:esp32-ble` — Android BLE transport for the ESP32 fallback.
-- `:feature:controller` — Compose controller UI.
-- `:app` — Android frontend/runtime and transport selector.
-- `:shared` — Kotlin Multiplatform/Swift facade over the common Wii core; its bridge compatibility facade delegates to `:core:protocol`.
+- `:feature:controller` — Compose controller UI and transport selector.
+- `:app` — Android frontend/runtime.
+- `:shared` — thin Kotlin Multiplatform facade exported as `WiiRemoteShared.framework` for Swift.
 - `iosApp/` — native SwiftUI + CoreMotion frontend and CoreBluetooth ESP32 transport.
 - `firmware/esp32/` — BLE ↔ Bluetooth Classic HID bridge firmware; no Wii protocol state lives here.
 
@@ -93,7 +94,7 @@ ESP32
 phone → WiimoteSessionEngine
 ```
 
-Packets are capped at 20 bytes and fragmented with a six-byte version/type/sequence/fragment header. `BRIDGE_READY` negotiates the protocol version before Wii pairing controls are enabled.
+Packets are capped at 20 bytes and fragmented with a six-byte version/type/sequence/fragment header. `BRIDGE_READY` negotiates the protocol version before Wii pairing controls are enabled and also exposes the ESP32 firmware version. The firmware CI publishes the flashable application binary, bootloader, partition table and flashing metadata.
 
 ## Current development state
 
@@ -102,19 +103,20 @@ Packets are capped at 20 bytes and fragmented with a six-byte version/type/seque
 Implemented in software:
 
 - replaceable Android transports: Direct HID / ESP32 Bridge
-- Android BLE discovery, GATT connection, indication subscription and ordered TX queue
+- Android BLE discovery, GATT connection, indication subscription and ordered TX queue with retry/backpressure
 - common Android/iOS ESP32 bridge framing in `:core:protocol`
 - ESP32 pairing/bond controls and `DISCONNECTED / CONNECTING / CONNECTED` state
+- ESP32 firmware version reporting (`0.6.0` foundation)
 - complete Android HID control callbacks: GET_REPORT, SET_REPORT, SET_PROTOCOL and virtual-cable unplug
 - standalone Wii output report `0x10` rumble
 - persistent motion/gyro calibration profile
-- structured `wiiremotex-hardware-trace-v1` JSON recorder
+- structured `wiiremotex-hardware-trace-v1` JSON recorder with explicit transport identity
 - RX/TX/HID-control trace snapshots with report and emulator state
 - in-app JSON trace export and reset controls
 - Linux/BlueZ + `btmon` validation procedure
 - hardware compatibility matrix
 
-See `docs/hardware/HARDWARE_VALIDATION.md` and `docs/hardware/COMPATIBILITY_MATRIX.md`.
+See `docs/hardware/HARDWARE_VALIDATION.md`, `docs/hardware/ANDROID_ESP32_FALLBACK.md` and `docs/hardware/COMPATIBILITY_MATRIX.md`.
 
 ### Wii protocol features
 
@@ -143,11 +145,9 @@ Still hardware-gated:
 - Nunchuk/MotionPlus initialization compatibility across games
 - report cadence, reconnect and bond persistence under real hardware
 
-## Architecture direction
+## Architecture
 
-The bridge protocol is now owned by the common protocol layer rather than by the iOS facade. The next structural cleanup, after the transport hardware gate, is to make the three core modules native Kotlin Multiplatform modules with conventional source sets instead of having `:shared` include their JVM source directories.
-
-Target structure:
+The Wii implementation is now genuinely multiplatform rather than being source-directory reuse from `:shared`:
 
 ```text
 core/
@@ -162,7 +162,7 @@ transports/
 └── linux-bluez/     # later
 ```
 
-`LinuxBluezTransport` is intentionally postponed; it is not required for the mobile V1.
+The bridge framing protocol is owned by `:core:protocol`; Android and iOS consume that same implementation. `LinuxBluezTransport` remains intentionally postponed because it is not required for the mobile V1 or the current physical-Wii hardware gate.
 
 ## Roadmap
 
@@ -173,7 +173,7 @@ transports/
 0.4.x  Protocol fidelity and extension hardening
 0.5.x  Hardware validation + replaceable Android transports
 0.6.x  Compatibility fixes + reconnect hardening
-0.7.x  iOS + ESP32 hardware validation
+0.7.x  Android/iOS + ESP32 hardware validation
 0.8.x  Distribution, calibration wizard and product UX
 1.0    Polished multiplatform product
 ```
@@ -183,7 +183,7 @@ transports/
 JDK 17, AGP 9.4.0, Gradle 9.6.0, compileSdk 36.
 
 ```bash
-gradle :core:protocol:test :core:session:test :shared:jvmTest :app:assembleDebug
+gradle :core:protocol:jvmTest :core:session:jvmTest :core:trace:jvmTest :shared:jvmTest :app:assembleDebug
 ```
 
 ## Legal

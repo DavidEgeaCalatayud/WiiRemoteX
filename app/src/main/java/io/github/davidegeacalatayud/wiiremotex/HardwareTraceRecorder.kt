@@ -3,27 +3,16 @@ package io.github.davidegeacalatayud.wiiremotex
 import android.os.Build
 import android.os.SystemClock
 import io.github.davidegeacalatayud.wiiremotex.core.model.WiimoteState
-
-data class HardwareTraceEvent(
-    val timestampNs: Long,
-    val elapsedRealtimeNs: Long,
-    val direction: String,
-    val transport: String,
-    val event: String,
-    val reportId: Int?,
-    val payload: ByteArray,
-    val connectionState: String,
-    val reportMode: Int,
-    val extensionState: String,
-    val irState: String,
-    val motionPlusState: String,
-)
+import io.github.davidegeacalatayud.wiiremotex.core.trace.HARDWARE_TRACE_SCHEMA
+import io.github.davidegeacalatayud.wiiremotex.core.trace.HardwareTraceEvent
+import io.github.davidegeacalatayud.wiiremotex.core.trace.traceExtensionState
+import io.github.davidegeacalatayud.wiiremotex.core.trace.traceInfraredState
+import io.github.davidegeacalatayud.wiiremotex.core.trace.traceMotionPlusState
 
 class HardwareTraceRecorder(
     private val maxEvents: Int = 8_000,
 ) {
     private val events = ArrayDeque<HardwareTraceEvent>()
-    private var activeTransport = DIRECT_HID_TRANSPORT
 
     @Synchronized
     fun record(
@@ -33,32 +22,22 @@ class HardwareTraceRecorder(
         state: WiimoteState,
         reportId: Int? = null,
         payload: ByteArray = byteArrayOf(),
-        transport: String? = null,
+        transport: String,
     ) {
-        updateActiveTransport(event)
-        val resolvedTransport = transport ?: activeTransport
-
         events.addLast(
             HardwareTraceEvent(
                 timestampNs = System.currentTimeMillis() * 1_000_000L,
                 elapsedRealtimeNs = SystemClock.elapsedRealtimeNanos(),
                 direction = direction,
-                transport = resolvedTransport,
+                transport = transport,
                 event = event,
                 reportId = reportId,
                 payload = payload.copyOf(),
                 connectionState = connectionState,
                 reportMode = state.reportMode,
-                extensionState =
-                    "nunchuk.connected=${state.nunchuk.connected};" +
-                        "nunchuk.initialized=${state.nunchuk.initialized}",
-                irState =
-                    "enabled=${state.infrared.enabled};configured=${state.infrared.configured};" +
-                        "mode=${state.infrared.mode}",
-                motionPlusState =
-                    "present=${state.motionPlus.present};initialized=${state.motionPlus.initialized};" +
-                        "active=${state.motionPlus.active};mode=${state.motionPlus.activationMode};" +
-                        "passthrough=${state.motionPlus.passThroughNunchuk}",
+                extensionState = state.traceExtensionState(),
+                irState = state.traceInfraredState(),
+                motionPlusState = state.traceMotionPlusState(),
             ),
         )
         while (events.size > maxEvents) events.removeFirst()
@@ -70,7 +49,7 @@ class HardwareTraceRecorder(
     @Synchronized
     fun exportJson(): String = buildString {
         append("{\n")
-        append("  \"schema\": \"wiiremotex-hardware-trace-v1\",\n")
+        append("  \"schema\": \"${HARDWARE_TRACE_SCHEMA}\",\n")
         append("  \"device\": {")
         append("\"manufacturer\":\"${escape(Build.MANUFACTURER)}\",")
         append("\"model\":\"${escape(Build.MODEL)}\",")
@@ -79,6 +58,7 @@ class HardwareTraceRecorder(
         append("},\n")
         append("  \"events\": [\n")
         events.forEachIndexed { index, item ->
+            val reportId = item.reportId
             append("    {")
             append("\"timestamp_ns\":${item.timestampNs},")
             append("\"elapsed_realtime_ns\":${item.elapsedRealtimeNs},")
@@ -86,12 +66,12 @@ class HardwareTraceRecorder(
             append("\"transport\":\"${escape(item.transport)}\",")
             append("\"event\":\"${escape(item.event)}\",")
             append("\"report_id\":")
-            if (item.reportId == null) append("null") else append(item.reportId)
+            if (reportId == null) append("null") else append(reportId)
             append(",\"report_id_hex\":")
-            if (item.reportId == null) {
+            if (reportId == null) {
                 append("null")
             } else {
-                append("\"0x${item.reportId.toString(16).uppercase().padStart(2, '0')}\"")
+                append("\"0x${reportId.toString(16).uppercase().padStart(2, '0')}\"")
             }
             append(",\"payload_hex\":\"${item.payload.toHex()}\",")
             append("\"connection_state\":\"${escape(item.connectionState)}\",")
@@ -108,20 +88,6 @@ class HardwareTraceRecorder(
         append("}\n")
     }
 
-    private fun updateActiveTransport(event: String) {
-        when {
-            event.contains("Transport selected: ESP32_BRIDGE") ||
-                event.contains("Starting Android → ESP32 BLE fallback transport") -> {
-                activeTransport = ESP32_BRIDGE_TRANSPORT
-            }
-
-            event.contains("Transport selected: DIRECT_HID") ||
-                event.contains("Starting direct Android Bluetooth HID transport") -> {
-                activeTransport = DIRECT_HID_TRANSPORT
-            }
-        }
-    }
-
     private fun ByteArray.toHex(): String =
         joinToString(" ") { byte ->
             (byte.toInt() and 0xFF).toString(16).uppercase().padStart(2, '0')
@@ -134,9 +100,4 @@ class HardwareTraceRecorder(
             .replace("\n", "\\n")
             .replace("\r", "\\r")
             .replace("\t", "\\t")
-
-    private companion object {
-        const val DIRECT_HID_TRANSPORT = "android-bluetooth-hid-device"
-        const val ESP32_BRIDGE_TRANSPORT = "android-ble-esp32-classic-hid"
-    }
 }

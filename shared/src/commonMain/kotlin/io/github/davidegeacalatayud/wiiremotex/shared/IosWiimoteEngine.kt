@@ -7,6 +7,12 @@ import io.github.davidegeacalatayud.wiiremotex.core.model.MotionPlusState
 import io.github.davidegeacalatayud.wiiremotex.core.model.MotionState
 import io.github.davidegeacalatayud.wiiremotex.core.model.NunchukState
 import io.github.davidegeacalatayud.wiiremotex.core.model.WiiButton
+import io.github.davidegeacalatayud.wiiremotex.core.protocol.bridge.BridgeControlCode
+import io.github.davidegeacalatayud.wiiremotex.core.protocol.bridge.BridgeFrameCodec
+import io.github.davidegeacalatayud.wiiremotex.core.protocol.bridge.BridgeFrameReassembler
+import io.github.davidegeacalatayud.wiiremotex.core.protocol.bridge.BridgeMessageType
+import io.github.davidegeacalatayud.wiiremotex.core.protocol.bridge.BridgeStatusCode
+import io.github.davidegeacalatayud.wiiremotex.core.protocol.bridge.WiiConnectionState
 import io.github.davidegeacalatayud.wiiremotex.core.session.SessionResult
 import io.github.davidegeacalatayud.wiiremotex.core.session.WiimoteEffect
 import io.github.davidegeacalatayud.wiiremotex.core.session.WiimoteSessionEngine
@@ -42,6 +48,9 @@ class IosWiimoteEngine(
         private set
 
     var bridgeErrorCode: Int = 0
+        private set
+
+    var bridgeFirmwareVersion: String = ""
         private set
 
     val bridgeProtocolCompatible: Boolean
@@ -382,6 +391,7 @@ class IosWiimoteEngine(
         bridgeReady = false
         bridgeProtocolVersion = 0
         bridgeErrorCode = 0
+        bridgeFirmwareVersion = ""
         wiiConnectionState = WiiConnectionState.DISCONNECTED
     }
 
@@ -401,6 +411,14 @@ class IosWiimoteEngine(
 
             BridgeStatusCode.BRIDGE_READY -> {
                 bridgeProtocolVersion = payload[1].toInt() and 0xFF
+                bridgeFirmwareVersion =
+                    if (payload.size >= 5) {
+                        "${payload[2].toInt() and 0xFF}." +
+                            "${payload[3].toInt() and 0xFF}." +
+                            "${payload[4].toInt() and 0xFF}"
+                    } else {
+                        ""
+                    }
                 bridgeReady = true
                 bridgeErrorCode = 0
             }

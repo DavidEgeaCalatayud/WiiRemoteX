@@ -7,6 +7,7 @@ import WiiRemoteShared
 final class WiiRemoteViewModel: ObservableObject {
     @Published private(set) var bridgeState = "Idle"
     @Published private(set) var bridgeProtocolState = "Waiting"
+    @Published private(set) var bridgeFirmwareVersion = "Unknown"
     @Published private(set) var canPairWii = false
     @Published private(set) var canStopWiiPairing = false
     @Published private(set) var wiiState = "Disconnected"
@@ -258,6 +259,10 @@ final class WiiRemoteViewModel: ObservableObject {
     private func refreshSharedState() {
         reportMode = String(format: "0x%02X", engine.reportMode)
         bridgeProtocolState = engine.bridgeProtocolStatusLabel
+        bridgeFirmwareVersion =
+            engine.bridgeFirmwareVersion.isEmpty
+                ? "Unknown"
+                : engine.bridgeFirmwareVersion
         canPairWii =
             engine.bridgeProtocolCompatible &&
             engine.wiiConnectionState == 0

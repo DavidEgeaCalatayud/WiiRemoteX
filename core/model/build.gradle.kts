@@ -1,2 +1,9 @@
-plugins { id("org.jetbrains.kotlin.jvm") }
-kotlin { jvmToolchain(17) }
+plugins { id("org.jetbrains.kotlin.multiplatform") }
+
+kotlin {
+    jvm()
+    iosArm64()
+    iosSimulatorArm64()
+    iosX64()
+    jvmToolchain(17)
+}
