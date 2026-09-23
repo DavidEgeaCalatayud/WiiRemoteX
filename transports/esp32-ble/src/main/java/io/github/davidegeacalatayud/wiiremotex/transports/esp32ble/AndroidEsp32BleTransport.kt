@@ -16,6 +16,8 @@ import android.bluetooth.le.ScanResult
 import android.bluetooth.le.ScanSettings
 import android.content.Context
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import android.os.ParcelUuid
 import io.github.davidegeacalatayud.wiiremotex.core.protocol.HidInputReport
 import io.github.davidegeacalatayud.wiiremotex.core.protocol.bridge.BridgeControlCode
@@ -75,6 +77,7 @@ class AndroidEsp32BleTransport(
     private val adapter: BluetoothAdapter? = bluetoothManager.adapter
 
     private val lock = Any()
+    private val handler = Handler(Looper.getMainLooper())
     private val reassembler = BridgeFrameReassembler()
     private val writeQueue = ArrayDeque<PendingWrite>()
 
@@ -85,6 +88,11 @@ class AndroidEsp32BleTransport(
     private var writeInFlight = false
     private var state = State.IDLE
     private var sequence = 0
+    private var lastDevice: BluetoothDevice? = null
+    private var userStopped = false
+    private var reconnectAttempts = 0
+    private var timeoutRunnable: Runnable? = null
+    private var reconnectRunnable: Runnable? = null
 
     val currentState: State
         get() = synchronized(lock) { state }
@@ -96,15 +104,23 @@ class AndroidEsp32BleTransport(
         override fun onScanResult(callbackType: Int, result: ScanResult) {
             val device = result.device ?: return
             stopScanOnly()
+            cancelTimeout()
+            lastDevice = device
             listener.onDiagnostic(
                 "ESP32 bridge discovered: ${device.name ?: device.address}",
             )
             setState(State.CONNECTING)
+            scheduleTimeout(
+                expectedState = State.CONNECTING,
+                timeoutMs = CONNECT_TIMEOUT_MS,
+                message = "Timed out connecting to ESP32 bridge",
+            )
             connect(device)
         }
 
         override fun onScanFailed(errorCode: Int) {
             scannerActive = false
+            cancelTimeout()
             fail("BLE scan failed with code $errorCode")
         }
     }
@@ -116,41 +132,58 @@ class AndroidEsp32BleTransport(
             newState: Int,
         ) {
             if (status != BluetoothGatt.GATT_SUCCESS) {
-                fail("ESP32 GATT connection failed with status $status")
-                closeGatt()
+                cancelTimeout()
+                recoverOrFail("ESP32 GATT connection failed with status $status")
                 return
             }
 
             when (newState) {
                 BluetoothProfile.STATE_CONNECTED -> {
+                    cancelTimeout()
+                    reconnectAttempts = 0
                     listener.onDiagnostic("Android BLE link connected")
                     setState(State.DISCOVERING)
+                    scheduleTimeout(
+                        expectedState = State.DISCOVERING,
+                        timeoutMs = DISCOVERY_TIMEOUT_MS,
+                        message = "Timed out discovering ESP32 bridge services",
+                    )
                     if (!safeGattCall("discover BLE services") { gatt.discoverServices() }) {
                         closeGatt()
                     }
                 }
 
                 BluetoothProfile.STATE_DISCONNECTED -> {
+                    cancelTimeout()
                     listener.onDiagnostic("ESP32 BLE link disconnected")
+                    val shouldRecover =
+                        !userStopped && currentState != State.IDLE && currentState != State.ERROR
                     resetSession()
-                    setState(State.IDLE)
                     closeGatt()
+                    if (shouldRecover) {
+                        scheduleReconnect("BLE link disconnected unexpectedly")
+                    } else {
+                        setState(State.IDLE)
+                    }
                 }
             }
         }
 
         override fun onServicesDiscovered(gatt: BluetoothGatt, status: Int) {
             if (status != BluetoothGatt.GATT_SUCCESS) {
-                fail("BLE service discovery failed with status $status")
+                cancelTimeout()
+                recoverOrFail("BLE service discovery failed with status $status")
                 return
             }
 
             val service = gatt.getService(SERVICE_UUID)
             if (service == null) {
-                fail("WiiRemoteX ESP32 service was not found")
+                cancelTimeout()
+                recoverOrFail("WiiRemoteX ESP32 service was not found")
                 return
             }
 
+            cancelTimeout()
             configureService(gatt, service)
         }
 
@@ -181,13 +214,13 @@ class AndroidEsp32BleTransport(
         ) {
             if (descriptor.uuid != CCC_UUID) return
 
+            cancelTimeout()
             if (status != BluetoothGatt.GATT_SUCCESS) {
-                fail("Unable to enable ESP32 bridge indications: status $status")
+                recoverOrFail("Unable to enable ESP32 bridge indications: status $status")
                 return
             }
 
             listener.onDiagnostic("ESP32 bridge indications enabled")
-            // Transport is usable now; BRIDGE_READY still validates protocol compatibility.
             setState(State.READY)
         }
 
@@ -230,36 +263,17 @@ class AndroidEsp32BleTransport(
             return true
         }
 
-        val scanner = adapter?.bluetoothLeScanner
-        if (adapter == null || scanner == null) {
-            fail("Bluetooth LE is unavailable on this Android device")
-            return false
-        }
-
+        userStopped = false
+        reconnectAttempts = 0
+        cancelReconnect()
         resetSession()
-        setState(State.SCANNING)
-
-        return try {
-            val filters = listOf(
-                ScanFilter.Builder()
-                    .setServiceUuid(ParcelUuid(SERVICE_UUID))
-                    .build(),
-            )
-            val settings = ScanSettings.Builder()
-                .setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY)
-                .build()
-
-            scanner.startScan(filters, settings, scanCallback)
-            scannerActive = true
-            listener.onDiagnostic("Scanning for WiiRemoteX ESP32 bridge")
-            true
-        } catch (error: SecurityException) {
-            fail("Bluetooth scan permission is required", error)
-            false
-        }
+        return beginScan()
     }
 
     fun stop() {
+        userStopped = true
+        cancelTimeout()
+        cancelReconnect()
         stopScanOnly()
         resetSession()
         closeGatt()
@@ -289,6 +303,39 @@ class AndroidEsp32BleTransport(
             BridgeMessageType.CONTROL,
             byteArrayOf(code.toByte()),
         )
+
+    private fun beginScan(): Boolean {
+        val scanner = adapter?.bluetoothLeScanner
+        if (adapter == null || !adapter.isEnabled || scanner == null) {
+            fail("Bluetooth LE is unavailable or disabled on this Android device")
+            return false
+        }
+
+        setState(State.SCANNING)
+        return try {
+            val filters = listOf(
+                ScanFilter.Builder()
+                    .setServiceUuid(ParcelUuid(SERVICE_UUID))
+                    .build(),
+            )
+            val settings = ScanSettings.Builder()
+                .setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY)
+                .build()
+
+            scanner.startScan(filters, settings, scanCallback)
+            scannerActive = true
+            listener.onDiagnostic("Scanning for WiiRemoteX ESP32 bridge")
+            scheduleTimeout(
+                expectedState = State.SCANNING,
+                timeoutMs = SCAN_TIMEOUT_MS,
+                message = "Timed out scanning for WiiRemoteX ESP32 bridge",
+            )
+            true
+        } catch (error: SecurityException) {
+            fail("Bluetooth scan permission is required", error)
+            false
+        }
+    }
 
     private fun enqueueMessage(
         type: BridgeMessageType,
@@ -401,7 +448,7 @@ class AndroidEsp32BleTransport(
         val rx = service.getCharacteristic(BRIDGE_TO_PHONE_UUID)
 
         if (tx == null || rx == null) {
-            fail("ESP32 bridge characteristics are incomplete")
+            recoverOrFail("ESP32 bridge characteristics are incomplete")
             return
         }
 
@@ -410,13 +457,13 @@ class AndroidEsp32BleTransport(
 
         try {
             if (!gatt.setCharacteristicNotification(rx, true)) {
-                fail("Android rejected bridge indication subscription")
+                recoverOrFail("Android rejected bridge indication subscription")
                 return
             }
 
             val ccc = rx.getDescriptor(CCC_UUID)
             if (ccc == null) {
-                fail("ESP32 bridge CCC descriptor is missing")
+                recoverOrFail("ESP32 bridge CCC descriptor is missing")
                 return
             }
 
@@ -426,8 +473,15 @@ class AndroidEsp32BleTransport(
                 BluetoothGattDescriptor.ENABLE_INDICATION_VALUE,
             )
             if (!accepted) {
-                fail("Android rejected bridge CCC write")
+                recoverOrFail("Android rejected bridge CCC write")
+                return
             }
+
+            scheduleTimeout(
+                expectedState = State.DISCOVERING,
+                timeoutMs = INDICATION_TIMEOUT_MS,
+                message = "Timed out enabling ESP32 bridge indications",
+            )
         } catch (error: SecurityException) {
             fail("Bluetooth connect permission is required", error)
         }
@@ -532,6 +586,82 @@ class AndroidEsp32BleTransport(
         }
     }
 
+    private fun scheduleReconnect(reason: String) {
+        cancelReconnect()
+        if (userStopped || reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
+            fail("$reason; reconnect attempts exhausted")
+            return
+        }
+
+        reconnectAttempts++
+        val delayMs = RECONNECT_BASE_DELAY_MS * reconnectAttempts
+        listener.onDiagnostic(
+            "$reason; retrying ESP32 BLE in ${delayMs}ms " +
+                "($reconnectAttempts/$MAX_RECONNECT_ATTEMPTS)",
+        )
+        setState(State.CONNECTING)
+
+        val runnable = Runnable {
+            reconnectRunnable = null
+            if (userStopped) return@Runnable
+
+            resetSession()
+            closeGatt()
+            val device = lastDevice
+            if (device != null && adapter?.isEnabled == true) {
+                setState(State.CONNECTING)
+                scheduleTimeout(
+                    expectedState = State.CONNECTING,
+                    timeoutMs = CONNECT_TIMEOUT_MS,
+                    message = "Timed out reconnecting to ESP32 bridge",
+                )
+                connect(device)
+            } else {
+                beginScan()
+            }
+        }
+        reconnectRunnable = runnable
+        handler.postDelayed(runnable, delayMs)
+    }
+
+    private fun recoverOrFail(message: String) {
+        cancelTimeout()
+        stopScanOnly()
+        resetSession()
+        closeGatt()
+        if (!userStopped && reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
+            scheduleReconnect(message)
+        } else {
+            fail(message)
+        }
+    }
+
+    private fun scheduleTimeout(
+        expectedState: State,
+        timeoutMs: Long,
+        message: String,
+    ) {
+        cancelTimeout()
+        val runnable = Runnable {
+            timeoutRunnable = null
+            if (!userStopped && currentState == expectedState) {
+                recoverOrFail(message)
+            }
+        }
+        timeoutRunnable = runnable
+        handler.postDelayed(runnable, timeoutMs)
+    }
+
+    private fun cancelTimeout() {
+        timeoutRunnable?.let(handler::removeCallbacks)
+        timeoutRunnable = null
+    }
+
+    private fun cancelReconnect() {
+        reconnectRunnable?.let(handler::removeCallbacks)
+        reconnectRunnable = null
+    }
+
     private fun setState(newState: State) {
         synchronized(lock) {
             state = newState
@@ -579,6 +709,8 @@ class AndroidEsp32BleTransport(
     }
 
     private fun fail(message: String, cause: Throwable? = null) {
+        cancelTimeout()
+        cancelReconnect()
         setState(State.ERROR)
         listener.onError(message, cause)
     }
@@ -609,5 +741,12 @@ class AndroidEsp32BleTransport(
 
         const val MAX_PENDING_PACKETS = 1_024
         const val MAX_WRITE_RETRIES = 2
+        const val MAX_RECONNECT_ATTEMPTS = 3
+
+        const val SCAN_TIMEOUT_MS = 12_000L
+        const val CONNECT_TIMEOUT_MS = 10_000L
+        const val DISCOVERY_TIMEOUT_MS = 10_000L
+        const val INDICATION_TIMEOUT_MS = 8_000L
+        const val RECONNECT_BASE_DELAY_MS = 1_000L
     }
 }
