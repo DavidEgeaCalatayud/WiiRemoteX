@@ -2,7 +2,7 @@
 
 **WiiRemoteX** is an experimental Android project that aims to make an Android phone behave like a Wii Remote when talking to a **real Nintendo Wii** over Bluetooth HID.
 
-> Status: **Milestone 0 / Bluetooth proof of concept**. The core protocol model and Android HID-device scaffold are being built first; real-console pairing still has to be validated on hardware.
+> Status: **0.5.0 hardware-validation**. The software emulator is feature-rich enough for the next gate: measure Android Bluetooth HID behaviour against a physical Wii and a reference Wii Remote.
 
 ## Goal
 
@@ -53,6 +53,21 @@ See `docs/architecture/ARCHITECTURE.md`.
 
 ## Current development state
 
+### 0.5.0-hardware-validation
+
+This milestone adds the instrumentation needed to validate the emulator empirically:
+
+- complete Android HID control callbacks: GET_REPORT, SET_REPORT, SET_PROTOCOL and virtual-cable unplug
+- standalone Wii output report `0x10` rumble
+- persistent motion/gyro calibration profile
+- structured `wiiremotex-hardware-trace-v1` JSON recorder
+- RX/TX/HID-control trace snapshots with report and emulator state
+- in-app JSON trace export and reset controls
+- Linux/BlueZ + `btmon` validation procedure
+- hardware compatibility matrix
+
+See `docs/hardware/HARDWARE_VALIDATION.md` and `docs/hardware/COMPATIBILITY_MATRIX.md`.
+
 ### 0.4.0-alpha
 
 Implemented in software:
@@ -85,7 +100,9 @@ Still hardware-gated:
 0.1.x  Bluetooth HID PoC
 0.2.x  Motion / IR / Nunchuk / MotionPlus emulation
 0.3.x  Hardware calibration + game compatibility
-0.4.x  Reconnection + protocol hardening
+0.4.x  Protocol fidelity and extension hardening
+0.5.x  Hardware validation + measured behavioural diff
+0.6.x  Compatibility fixes + reconnect hardening
 1.0    Polished Android product
 ```
 

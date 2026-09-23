@@ -28,6 +28,14 @@ class WiiRemoteViewModel(
         )
     }
 
+    fun recordDiscoverabilityRequested(durationSeconds: Int) {
+        runtime.recordDiscoverabilityRequested(durationSeconds)
+    }
+
+    fun recordDiscoverabilityResult(resultCode: Int) {
+        runtime.recordDiscoverabilityResult(resultCode)
+    }
+
     fun onButtonChanged(button: WiiButton, pressed: Boolean) {
         runtime.onButtonChanged(button, pressed)
     }
@@ -66,5 +74,11 @@ class WiiRemoteViewModel(
 
     fun recenterMotionPointer() {
         runtime.recenterMotionPointer()
+    }
+
+    fun exportHardwareTraceJson(): String = runtime.exportHardwareTraceJson()
+
+    fun clearHardwareTrace() {
+        runtime.clearHardwareTrace()
     }
 }

@@ -36,8 +36,9 @@ class MainActivity : ComponentActivity() {
 
     private val discoverableLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult(),
-    ) {
+    ) { result ->
         // Result code is the number of seconds granted, or RESULT_CANCELED.
+        viewModel.recordDiscoverabilityResult(result.resultCode)
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -69,6 +70,10 @@ class MainActivity : ComponentActivity() {
                         onShareDiagnostics = {
                             shareDiagnostics(state)
                         },
+                        onShareHardwareTrace = {
+                            shareHardwareTrace(viewModel.exportHardwareTraceJson())
+                        },
+                        onClearHardwareTrace = viewModel::clearHardwareTrace,
                         onButtonChanged = viewModel::onButtonChanged,
                         onIrPointer = viewModel::setIrPointer,
                         onIrEnabled = viewModel::setIrEnabled,
@@ -155,7 +160,20 @@ class MainActivity : ComponentActivity() {
         )
     }
 
+    private fun shareHardwareTrace(json: String) {
+        val intent = Intent(Intent.ACTION_SEND).apply {
+            type = "application/json"
+            putExtra(Intent.EXTRA_SUBJECT, "WiiRemoteX hardware trace")
+            putExtra(Intent.EXTRA_TEXT, json)
+        }
+
+        startActivity(
+            Intent.createChooser(intent, "Share WiiRemoteX hardware trace"),
+        )
+    }
+
     private fun requestDiscoverable() {
+        viewModel.recordDiscoverabilityRequested(DISCOVERABLE_SECONDS)
         val intent = Intent(BluetoothAdapter.ACTION_REQUEST_DISCOVERABLE).apply {
             putExtra(BluetoothAdapter.EXTRA_DISCOVERABLE_DURATION, DISCOVERABLE_SECONDS)
         }

@@ -51,6 +51,8 @@ fun ControllerScreen(
     onMakeDiscoverable: () -> Unit,
     onStopHid: () -> Unit,
     onShareDiagnostics: () -> Unit,
+    onShareHardwareTrace: () -> Unit,
+    onClearHardwareTrace: () -> Unit,
     onButtonChanged: (WiiButton, Boolean) -> Unit,
     onIrPointer: (Float, Float) -> Unit,
     onIrEnabled: (Boolean) -> Unit,
@@ -146,6 +148,8 @@ fun ControllerScreen(
         DiagnosticsCard(
             lines = diagnosticLines,
             onShareDiagnostics = onShareDiagnostics,
+            onShareHardwareTrace = onShareHardwareTrace,
+            onClearHardwareTrace = onClearHardwareTrace,
         )
     }
 }
@@ -412,6 +416,8 @@ private fun MotionPlusCard(
 private fun DiagnosticsCard(
     lines: List<String>,
     onShareDiagnostics: () -> Unit,
+    onShareHardwareTrace: () -> Unit,
+    onClearHardwareTrace: () -> Unit,
 ) {
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(
@@ -432,8 +438,16 @@ private fun DiagnosticsCard(
                 }
             }
 
-            Button(onClick = onShareDiagnostics) {
-                Text("Share diagnostics")
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(onClick = onShareDiagnostics) {
+                    Text("Share diagnostics")
+                }
+                Button(onClick = onShareHardwareTrace) {
+                    Text("Export JSON trace")
+                }
+            }
+            Button(onClick = onClearHardwareTrace) {
+                Text("Clear hardware trace")
             }
         }
     }

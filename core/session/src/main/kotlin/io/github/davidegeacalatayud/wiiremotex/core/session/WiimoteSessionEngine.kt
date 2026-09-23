@@ -174,6 +174,11 @@ class WiimoteSessionEngine(
     @Synchronized
     fun onHostReport(reportId: Int, payload: ByteArray): SessionResult {
         val effects = when (val command = decoder.decode(reportId, payload)) {
+            is HostCommand.SetRumble -> {
+                state = state.copy(rumbleEnabled = command.enabled)
+                emptyList()
+            }
+
             is HostCommand.SetPlayerLeds -> {
                 state = state.copy(
                     leds = command.leds,

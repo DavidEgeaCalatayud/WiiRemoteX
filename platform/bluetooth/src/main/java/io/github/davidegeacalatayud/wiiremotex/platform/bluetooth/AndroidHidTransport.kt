@@ -21,6 +21,10 @@ class AndroidHidTransport(
         fun onRegistrationChanged(registered: Boolean) = Unit
         fun onConnectionStateChanged(device: BluetoothDevice?, state: Int) = Unit
         fun onHostReport(reportId: Int, payload: ByteArray) = Unit
+        fun onGetReport(type: Int, reportId: Int, bufferSize: Int): ByteArray? = null
+        fun onSetReport(type: Int, reportId: Int, payload: ByteArray): Boolean = false
+        fun onSetProtocol(protocol: Int) = Unit
+        fun onVirtualCableUnplug(device: BluetoothDevice?) = Unit
         fun onError(message: String, cause: Throwable? = null) = Unit
 
         companion object {
@@ -48,6 +52,72 @@ class AndroidHidTransport(
         override fun onInterruptData(device: BluetoothDevice?, reportId: Byte, data: ByteArray?) {
             if (device != null) hostDevice = device
             listener.onHostReport(reportId.toInt() and 0xFF, data?.copyOf() ?: byteArrayOf())
+        }
+
+        override fun onGetReport(
+            device: BluetoothDevice?,
+            type: Byte,
+            id: Byte,
+            bufferSize: Int,
+        ) {
+            if (device == null) return
+            hostDevice = device
+
+            val reportId = id.toInt() and 0xFF
+            val reportType = type.toInt() and 0xFF
+            val response = listener.onGetReport(reportType, reportId, bufferSize)
+
+            try {
+                if (response == null) {
+                    hidDevice?.reportError(device, BluetoothHidDevice.ERROR_RSP_INVALID_RPT_ID)
+                } else {
+                    val payload =
+                        if (bufferSize > 0 && response.size < bufferSize) response.copyOf(bufferSize)
+                        else response
+                    hidDevice?.replyReport(device, type, id, payload)
+                }
+            } catch (error: SecurityException) {
+                listener.onError("Unable to answer HID GET_REPORT", error)
+            }
+        }
+
+        override fun onSetReport(
+            device: BluetoothDevice?,
+            type: Byte,
+            id: Byte,
+            data: ByteArray?,
+        ) {
+            if (device == null) return
+            hostDevice = device
+
+            val accepted = listener.onSetReport(
+                type = type.toInt() and 0xFF,
+                reportId = id.toInt() and 0xFF,
+                payload = data?.copyOf() ?: byteArrayOf(),
+            )
+
+            try {
+                hidDevice?.reportError(
+                    device,
+                    if (accepted) {
+                        BluetoothHidDevice.ERROR_RSP_SUCCESS
+                    } else {
+                        BluetoothHidDevice.ERROR_RSP_INVALID_RPT_ID
+                    },
+                )
+            } catch (error: SecurityException) {
+                listener.onError("Unable to answer HID SET_REPORT", error)
+            }
+        }
+
+        override fun onSetProtocol(device: BluetoothDevice?, protocol: Byte) {
+            if (device != null) hostDevice = device
+            listener.onSetProtocol(protocol.toInt() and 0xFF)
+        }
+
+        override fun onVirtualCableUnplug(device: BluetoothDevice?) {
+            listener.onVirtualCableUnplug(device)
+            if (hostDevice == device) hostDevice = null
         }
     }
 

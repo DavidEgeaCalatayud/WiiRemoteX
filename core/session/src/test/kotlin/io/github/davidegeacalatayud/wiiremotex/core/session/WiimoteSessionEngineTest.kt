@@ -282,4 +282,19 @@ class WiimoteSessionEngineTest {
 
         assertTrue(configured.state.infrared.configured)
     }
+    @Test
+    fun `standalone 0x10 report toggles rumble without changing report mode`() {
+        val engine = WiimoteSessionEngine()
+        val initialMode = engine.state.reportMode
+
+        val enabled = engine.onHostReport(0x10, byteArrayOf(0x01))
+        assertTrue(enabled.state.rumbleEnabled)
+        assertEquals(initialMode, enabled.state.reportMode)
+        assertTrue(enabled.effects.isEmpty())
+
+        val disabled = engine.onHostReport(0x10, byteArrayOf(0x00))
+        assertEquals(false, disabled.state.rumbleEnabled)
+        assertEquals(initialMode, disabled.state.reportMode)
+    }
+
 }

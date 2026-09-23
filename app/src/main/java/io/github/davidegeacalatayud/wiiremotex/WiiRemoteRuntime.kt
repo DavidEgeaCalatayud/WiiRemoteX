@@ -19,6 +19,7 @@ import io.github.davidegeacalatayud.wiiremotex.core.session.WiimoteEffect
 import io.github.davidegeacalatayud.wiiremotex.core.session.WiimoteSessionEngine
 import io.github.davidegeacalatayud.wiiremotex.platform.bluetooth.AndroidHidTransport
 import io.github.davidegeacalatayud.wiiremotex.platform.sensors.AndroidMotionSource
+import io.github.davidegeacalatayud.wiiremotex.platform.sensors.MotionCalibrationStore
 import io.github.davidegeacalatayud.wiiremotex.platform.sensors.OrientationSample
 import java.time.LocalTime
 import java.time.format.DateTimeFormatter
@@ -61,6 +62,8 @@ class WiiRemoteRuntime(
 
     private val session = WiimoteSessionEngine()
     private val batteryManager = application.getSystemService(BatteryManager::class.java)
+    private val calibrationStore = MotionCalibrationStore(application)
+    private val traceRecorder = HardwareTraceRecorder()
 
     private val transport = AndroidHidTransport(
         context = application,
@@ -78,6 +81,7 @@ class WiiRemoteRuntime(
 
     private val motionSource = AndroidMotionSource(
         context = application,
+        initialCalibration = calibrationStore.load(),
         listener = object : AndroidMotionSource.Listener {
             override fun onMotionChanged(motion: io.github.davidegeacalatayud.wiiremotex.core.model.MotionState) {
                 apply(session.setMotion(motion))
@@ -105,6 +109,7 @@ class WiiRemoteRuntime(
             return
         }
 
+        traceRecorder.clear()
         updateBatteryFromSystem()
         if (motionSource.start()) {
             log("SYS", "Android accelerometer/gyroscope source started")
@@ -137,6 +142,18 @@ class WiiRemoteRuntime(
                 wiimote = session.state,
                 lastError = null,
             )
+        }
+    }
+
+    fun recordDiscoverabilityRequested(durationSeconds: Int) {
+        log("SYS", "Bluetooth discoverability requested for ${durationSeconds}s")
+    }
+
+    fun recordDiscoverabilityResult(resultCode: Int) {
+        if (resultCode > 0) {
+            log("SYS", "Bluetooth discoverability granted for ${resultCode}s")
+        } else {
+            log("SYS", "Bluetooth discoverability request canceled or denied")
         }
     }
 
@@ -280,9 +297,16 @@ class WiiRemoteRuntime(
         }
         smoothedPointerX = 0.5f
         smoothedPointerY = 0.5f
-        motionSource.calibrateGyroscope()
+        val calibration = motionSource.calibrateGyroscope()
+        calibrationStore.save(calibration)
         setIrPointer(0.5f, 0.5f, enabled = true)
-        log("SYS", "Motion Pointer and gyro recentered")
+        log(
+            "SYS",
+            "Motion Pointer recentered; gyro bias persisted " +
+                "x=${calibration.gyroBiasXRadPerSec} " +
+                "y=${calibration.gyroBiasYRadPerSec} " +
+                "z=${calibration.gyroBiasZRadPerSec}",
+        )
     }
 
     override fun onRegistrationChanged(registered: Boolean) {
@@ -319,6 +343,14 @@ class WiiRemoteRuntime(
         reportId: Int,
         payload: ByteArray,
     ) {
+        traceRecorder.record(
+            direction = "RX",
+            event = "interrupt_report",
+            connectionState = _uiState.value.hidStage.name,
+            state = session.state,
+            reportId = reportId,
+            payload = payload,
+        )
         log("RX", "0x${reportId.hex2()} ${payload.toHex()}")
 
         if (reportId == 0x15) {
@@ -332,6 +364,66 @@ class WiiRemoteRuntime(
         if (result.state.rumbleEnabled != rumbleBefore) {
             setRumble(result.state.rumbleEnabled)
         }
+    }
+
+    override fun onGetReport(
+        type: Int,
+        reportId: Int,
+        bufferSize: Int,
+    ): ByteArray? {
+        traceRecorder.record(
+            direction = "HID_CONTROL",
+            event = "get_report type=$type buffer_size=$bufferSize",
+            connectionState = _uiState.value.hidStage.name,
+            state = session.state,
+            reportId = reportId,
+        )
+        log("HID", "GET_REPORT type=$type id=0x${reportId.hex2()} size=$bufferSize")
+        return null
+    }
+
+    override fun onSetReport(
+        type: Int,
+        reportId: Int,
+        payload: ByteArray,
+    ): Boolean {
+        traceRecorder.record(
+            direction = "HID_CONTROL",
+            event = "set_report type=$type",
+            connectionState = _uiState.value.hidStage.name,
+            state = session.state,
+            reportId = reportId,
+            payload = payload,
+        )
+        log("HID", "SET_REPORT type=$type id=0x${reportId.hex2()} ${payload.toHex()}")
+
+        // HID report type 2 is OUTPUT. Route it through the same Wii output-report decoder.
+        if (type == 2) {
+            onHostReport(reportId, payload)
+            return true
+        }
+        return false
+    }
+
+    override fun onSetProtocol(protocol: Int) {
+        traceRecorder.record(
+            direction = "HID_CONTROL",
+            event = "set_protocol protocol=$protocol",
+            connectionState = _uiState.value.hidStage.name,
+            state = session.state,
+        )
+        log("HID", "SET_PROTOCOL $protocol")
+    }
+
+    override fun onVirtualCableUnplug(device: BluetoothDevice?) {
+        traceRecorder.record(
+            direction = "HID_CONTROL",
+            event = "virtual_cable_unplug",
+            connectionState = _uiState.value.hidStage.name,
+            state = session.state,
+        )
+        log("HID", "Virtual cable unplug")
+        _uiState.update { it.copy(hidStage = HidStage.REGISTERED) }
     }
 
     override fun onError(
@@ -404,23 +496,29 @@ class WiiRemoteRuntime(
         val yawDelta = wrapRadians(orientation.yawRadians - centerYaw)
         val pitchDelta = orientation.pitchRadians - centerPitch
 
+        val calibration = motionSource.currentCalibration()
+        val horizontalRange =
+            Math.toRadians(calibration.pointerHorizontalRangeDegrees.toDouble()).toFloat()
+        val verticalRange =
+            Math.toRadians(calibration.pointerVerticalRangeDegrees.toDouble()).toFloat()
+
         val targetX =
-            (0.5f - yawDelta / HORIZONTAL_POINTER_RANGE_RAD).coerceIn(0f, 1f)
+            (0.5f - yawDelta / horizontalRange).coerceIn(0f, 1f)
         val targetY =
-            (0.5f + pitchDelta / VERTICAL_POINTER_RANGE_RAD).coerceIn(0f, 1f)
+            (0.5f + pitchDelta / verticalRange).coerceIn(0f, 1f)
 
         val deltaX = targetX - smoothedPointerX
         val deltaY = targetY - smoothedPointerY
 
         if (
-            abs(deltaX) < POINTER_DEAD_ZONE &&
-            abs(deltaY) < POINTER_DEAD_ZONE
+            abs(deltaX) < calibration.pointerDeadZone &&
+            abs(deltaY) < calibration.pointerDeadZone
         ) {
             return
         }
 
-        smoothedPointerX += deltaX * POINTER_SMOOTHING_ALPHA
-        smoothedPointerY += deltaY * POINTER_SMOOTHING_ALPHA
+        smoothedPointerX += deltaX * calibration.pointerSmoothingAlpha
+        smoothedPointerY += deltaY * calibration.pointerSmoothingAlpha
 
         setIrPointer(
             normalizedX = smoothedPointerX,
@@ -485,6 +583,14 @@ class WiiRemoteRuntime(
                 is WiimoteEffect.SendReport -> {
                     val report = effect.report
                     val sent = transport.send(report)
+                    traceRecorder.record(
+                        direction = "TX",
+                        event = if (sent) "send_report" else "send_report_not_sent",
+                        connectionState = _uiState.value.hidStage.name,
+                        state = result.state,
+                        reportId = report.reportId,
+                        payload = report.payload,
+                    )
 
                     if (logTx) {
                         val suffix = if (sent) "✓" else "not sent (no HID host)"
@@ -493,6 +599,13 @@ class WiiRemoteRuntime(
                 }
             }
         }
+    }
+
+    fun exportHardwareTraceJson(): String = traceRecorder.exportJson()
+
+    fun clearHardwareTrace() {
+        traceRecorder.clear()
+        log("SYS", "Hardware trace cleared")
     }
 
     private fun fail(message: String) {
@@ -515,6 +628,15 @@ class WiiRemoteRuntime(
         _uiState.update {
             it.copy(
                 diagnostics = (it.diagnostics + entry).takeLast(MAX_LOG_LINES),
+            )
+        }
+
+        if (direction != "RX" && direction != "TX") {
+            traceRecorder.record(
+                direction = direction,
+                event = message,
+                connectionState = _uiState.value.hidStage.name,
+                state = session.state,
             )
         }
     }
@@ -545,11 +667,6 @@ class WiiRemoteRuntime(
         const val NUNCHUK_Y_MIN = 27
         const val NUNCHUK_Y_MAX = 220
 
-        const val POINTER_SMOOTHING_ALPHA = 0.22f
-        const val POINTER_DEAD_ZONE = 0.0025f
-
-        val HORIZONTAL_POINTER_RANGE_RAD: Float = Math.toRadians(60.0).toFloat()
-        val VERTICAL_POINTER_RANGE_RAD: Float = Math.toRadians(45.0).toFloat()
 
         val TIME_FORMAT: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm:ss.SSS")
     }

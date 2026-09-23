@@ -3,6 +3,10 @@ package io.github.davidegeacalatayud.wiiremotex.core.protocol
 import io.github.davidegeacalatayud.wiiremotex.core.model.PlayerLeds
 
 sealed interface HostCommand {
+    data class SetRumble(
+        val enabled: Boolean,
+    ) : HostCommand
+
     data class SetPlayerLeds(
         val leds: PlayerLeds,
         val rumbleEnabled: Boolean,
@@ -50,6 +54,10 @@ class HostCommandDecoder {
         val first = payload.firstOrNull()?.toInt()?.and(0xFF) ?: 0
 
         return when (reportId) {
+            0x10 -> HostCommand.SetRumble(
+                enabled = first and 0x01 != 0,
+            )
+
             0x11 -> HostCommand.SetPlayerLeds(
                 leds = PlayerLeds.fromOutputByte(first),
                 rumbleEnabled = first and 0x01 != 0,

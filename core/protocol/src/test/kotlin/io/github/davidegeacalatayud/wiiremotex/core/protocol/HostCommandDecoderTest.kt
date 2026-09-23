@@ -10,6 +10,19 @@ class HostCommandDecoderTest {
     private val decoder = HostCommandDecoder()
 
     @Test
+    fun `0x10 decodes standalone rumble`() {
+        val enabled = assertIs<HostCommand.SetRumble>(
+            decoder.decode(0x10, byteArrayOf(0x01)),
+        )
+        assertTrue(enabled.enabled)
+
+        val disabled = assertIs<HostCommand.SetRumble>(
+            decoder.decode(0x10, byteArrayOf(0x00)),
+        )
+        assertEquals(false, disabled.enabled)
+    }
+
+    @Test
     fun `0x11 decodes LEDs and rumble`() {
         val command = assertIs<HostCommand.SetPlayerLeds>(
             decoder.decode(0x11, byteArrayOf(0x31)),
