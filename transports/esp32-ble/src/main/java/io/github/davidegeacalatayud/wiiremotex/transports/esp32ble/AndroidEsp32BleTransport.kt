@@ -303,7 +303,8 @@ class AndroidEsp32BleTransport(
             synchronized(queueLock) {
                 writeInFlight = false
             }
-            listener.onError("Android rejected the ESP32 BLE write")
+            listener.onError("Android rejected the ESP32 BLE write; dropping packet and continuing queue")
+            drainWrites()
         }
     }
 
