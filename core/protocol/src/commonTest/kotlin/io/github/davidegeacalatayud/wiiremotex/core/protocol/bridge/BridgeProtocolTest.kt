@@ -8,6 +8,22 @@ import kotlin.test.assertNull
 
 class BridgeProtocolTest {
     @Test
+    fun `single packet input report round trips`() {
+        val payload = byteArrayOf(0x30, 0x00, 0x08)
+        val packet = BridgeFrameCodec.encode(
+            type = BridgeMessageType.INPUT_REPORT,
+            sequence = 11,
+            payload = payload,
+        ).single()
+
+        val message = BridgeFrameReassembler().accept(packet)!!
+
+        assertEquals(BridgeMessageType.INPUT_REPORT, message.type)
+        assertEquals(11, message.sequence)
+        assertContentEquals(payload, message.payload)
+    }
+
+    @Test
     fun `large Wii output report survives 20 byte BLE fragmentation`() {
         val payload = ByteArray(22) { index -> index.toByte() }
 
