@@ -28,8 +28,9 @@ class AndroidMotionSource(
         fun onOrientationChanged(orientation: OrientationSample) = Unit
     }
 
+    private val appContext = context.applicationContext
     private val sensorManager =
-        context.applicationContext.getSystemService(SensorManager::class.java)
+        appContext.getSystemService(SensorManager::class.java)
 
     private val accelerometer =
         sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
@@ -113,7 +114,15 @@ class AndroidMotionSource(
         gyroBiasZ = profile.gyroBiasZRadPerSec
     }
 
-    fun currentCalibration(): MotionCalibrationProfile = calibration
+    fun currentCalibration(): MotionCalibrationProfile {
+        val sensitivity = PointerTuning.get(appContext)
+        return calibration.copy(
+            pointerHorizontalRangeDegrees =
+                calibration.pointerHorizontalRangeDegrees / sensitivity,
+            pointerVerticalRangeDegrees =
+                calibration.pointerVerticalRangeDegrees / sensitivity,
+        )
+    }
 
     override fun onSensorChanged(event: SensorEvent) {
         when (event.sensor.type) {

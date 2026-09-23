@@ -31,6 +31,7 @@ class IosWiimoteEngine(
     private var calibration: MotionCalibrationProfile,
 ) {
     constructor() : this(MotionCalibrationProfile.DEFAULT)
+
     private val session = WiimoteSessionEngine()
     private val reassembler = BridgeFrameReassembler()
 
@@ -40,6 +41,7 @@ class IosWiimoteEngine(
     private var pointerCenterPitch = 0f
     private var smoothedPointerX = 0.5f
     private var smoothedPointerY = 0.5f
+    private var pointerSensitivity = DEFAULT_POINTER_SENSITIVITY
 
     var bridgeReady: Boolean = false
         private set
@@ -87,6 +89,9 @@ class IosWiimoteEngine(
 
     val motionPlusPresent: Boolean
         get() = session.state.motionPlus.present
+
+    val currentPointerSensitivity: Float
+        get() = pointerSensitivity
 
     fun buttonChanged(buttonName: String, pressed: Boolean): List<ByteArray> {
         val button = WiiButton.entries.firstOrNull {
@@ -151,6 +156,13 @@ class IosWiimoteEngine(
             gyroBiasXRadPerSec = xRadPerSec,
             gyroBiasYRadPerSec = yRadPerSec,
             gyroBiasZRadPerSec = zRadPerSec,
+        )
+    }
+
+    fun updatePointerSensitivity(sensitivity: Float) {
+        pointerSensitivity = sensitivity.coerceIn(
+            MIN_POINTER_SENSITIVITY,
+            MAX_POINTER_SENSITIVITY,
         )
     }
 
@@ -245,9 +257,9 @@ class IosWiimoteEngine(
         val yawDelta = wrapRadians(yawRadians - pointerCenterYaw)
         val pitchDelta = pitchRadians - pointerCenterPitch
         val horizontalRange =
-            degreesToRadians(calibration.pointerHorizontalRangeDegrees)
+            degreesToRadians(calibration.pointerHorizontalRangeDegrees / pointerSensitivity)
         val verticalRange =
-            degreesToRadians(calibration.pointerVerticalRangeDegrees)
+            degreesToRadians(calibration.pointerVerticalRangeDegrees / pointerSensitivity)
 
         val targetX = (0.5f - yawDelta / horizontalRange).coerceIn(0f, 1f)
         val targetY = (0.5f + pitchDelta / verticalRange).coerceIn(0f, 1f)
@@ -511,5 +523,9 @@ class IosWiimoteEngine(
         const val NUNCHUK_X_MAX = 228
         const val NUNCHUK_Y_MIN = 27
         const val NUNCHUK_Y_MAX = 220
+
+        const val MIN_POINTER_SENSITIVITY = 0.5f
+        const val MAX_POINTER_SENSITIVITY = 2.0f
+        const val DEFAULT_POINTER_SENSITIVITY = 1.0f
     }
 }

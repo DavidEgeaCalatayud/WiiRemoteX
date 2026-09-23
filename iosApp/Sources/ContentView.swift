@@ -5,16 +5,37 @@ struct ContentView: View {
 
     var body: some View {
         NavigationStack {
-            ScrollView {
-                VStack(spacing: 18) {
-                    connectionCard
-                    remoteCard
-                    irCard
-                    nunchukCard
-                    motionPlusCard
-                    diagnosticsCard
+            GeometryReader { geometry in
+                ScrollView {
+                    if geometry.size.width > 760 && geometry.size.width > geometry.size.height {
+                        HStack(alignment: .top, spacing: 18) {
+                            VStack(spacing: 18) {
+                                connectionCard
+                                remoteCard
+                            }
+                            .frame(maxWidth: .infinity)
+
+                            VStack(spacing: 18) {
+                                irCard
+                                nunchukCard
+                                motionPlusCard
+                                diagnosticsCard
+                            }
+                            .frame(maxWidth: .infinity)
+                        }
+                        .padding()
+                    } else {
+                        VStack(spacing: 18) {
+                            connectionCard
+                            remoteCard
+                            irCard
+                            nunchukCard
+                            motionPlusCard
+                            diagnosticsCard
+                        }
+                        .padding()
+                    }
                 }
-                .padding()
             }
             .navigationTitle("WiiRemoteX")
         }
@@ -28,6 +49,16 @@ struct ContentView: View {
                 LabeledContent("Firmware", value: model.bridgeFirmwareVersion)
                 LabeledContent("ESP32 ↔ Wii", value: model.wiiState)
                 LabeledContent("Report mode", value: model.reportMode)
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Connection assistant")
+                        .font(.subheadline.weight(.semibold))
+                    Text("✓ 1. ESP32 Bridge transport")
+                    Text("\(model.bridgeProtocolState.hasPrefix("Ready") ? "✓" : "○") 2. Connect ESP32 and wait for BRIDGE_READY")
+                    Text("\(model.wiiState == "Connected" ? "✓" : "○") 3. Pair Wii and press the console red SYNC button")
+                }
+                .font(.caption)
+                .foregroundStyle(.secondary)
 
                 HStack {
                     Button("Connect ESP32") {
@@ -101,7 +132,7 @@ struct ContentView: View {
 
     private var irCard: some View {
         GroupBox("Virtual IR") {
-            VStack(spacing: 12) {
+            VStack(alignment: .leading, spacing: 12) {
                 Toggle(
                     "IR enabled",
                     isOn: Binding(
@@ -118,9 +149,33 @@ struct ContentView: View {
                     )
                 )
 
-                Button("Recenter motion + gyro") {
+                Text("Calibration wizard")
+                    .font(.subheadline.weight(.semibold))
+                Text("1. Hold the iPhone in your neutral pointing position and keep it still.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                Button("Calibrate + recenter") {
                     model.recenterMotionPointer()
                 }
+                .disabled(!model.motionPointerEnabled)
+
+                Text(String(format: "2. Pointer sensitivity · %.2f×", model.pointerSensitivity))
+                    .font(.caption)
+                Slider(
+                    value: Binding(
+                        get: { model.pointerSensitivity },
+                        set: model.setPointerSensitivity
+                    ),
+                    in: 0.5...2.0,
+                    step: 0.25
+                )
+                Text("Lower values require more movement; higher values reach the screen edges faster.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Text("3. Test the center and all four screen edges; recenter when your neutral grip changes.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
 
                 GeometryReader { geometry in
                     RoundedRectangle(cornerRadius: 16)

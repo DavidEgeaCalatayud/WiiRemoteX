@@ -1,0 +1,28 @@
+complexity:
+  LongMethod:
+    threshold: 130
+  LargeClass:
+    threshold: 1000
+  TooManyFunctions:
+    thresholdInFiles: 30
+    thresholdInClasses: 60
+    thresholdInInterfaces: 30
+    thresholdInObjects: 30
+    thresholdInEnums: 30
+  LongParameterList:
+    functionThreshold: 40
+    constructorThreshold: 12
+  NestedBlockDepth:
+    threshold: 5
+
+naming:
+  FunctionNaming:
+    active: false
+
+style:
+  MagicNumber:
+    active: false
+  MaxLineLength:
+    active: false
+  ReturnCount:
+    max: 4

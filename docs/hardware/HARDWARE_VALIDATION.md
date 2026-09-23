@@ -1,46 +1,173 @@
-# WiiRemoteX 0.5.0 hardware validation
+# WiiRemoteX 0.7 physical-hardware validation
 
-The purpose of this milestone is to replace protocol assumptions with measured behaviour.
+The purpose of this phase is to replace protocol assumptions with measured behaviour on real hardware.
 
-## Test A — Android phone against a physical Wii
+A physical Nintendo Wii has already established a connection with WiiRemoteX. That is **Gate 0** only: it proves reachability, not full Wii Remote compatibility.
 
-Record the phone model, Android version, Wii model/region and Wii System Menu version.
+## Evidence rules
 
-Expected minimum sequence:
+Every physical test session should record:
+
+- a run ID (`HW-###`)
+- WiiRemoteX commit SHA
+- Android/iOS build identifier
+- phone model and OS/API
+- selected transport route
+- ESP32 firmware version when applicable
+- Wii model, region and System Menu version
+- game/title used for feature validation
+- exported `wiiremotex-hardware-trace-v1` JSON
+- HIL harness output when applicable
+- pass/fail notes in `COMPATIBILITY_MATRIX.md`
+
+Do not mark a gate PASS from a software unit test alone.
+
+## Gate 0 — physical Wii connection
+
+**Status: PASS (exact hardware metadata must be captured on the next run).**
+
+Acceptance criteria:
+
+- the selected transport starts
+- the Wii establishes the Bluetooth/HID connection
+- WiiRemoteX reaches a connected state
+
+This gate has been achieved on physical Wii hardware.
+
+## Gate 1 — core A-button round trip
+
+Expected sequence:
 
 ```text
-REGISTER HID
-DISCOVERABLE
-WII CONNECTING
-WII CONNECTED
-Wii -> output reports
-Phone -> status/data reports
+Wii -> 0x15 status request
+WiiRemoteX -> 0x20 status
+Wii -> 0x12 report mode selection
 A down -> 0x30 00 08
 A up   -> 0x30 00 00
+Wii Menu visibly responds
 ```
 
-Export the in-app JSON trace after every connection attempt, including failed attempts.
+Pass criteria:
 
-### Pass gate
+- at least one Wii output report is captured
+- report mode negotiation is visible in trace
+- `0x30 00 08` is transmitted on A down
+- `0x30 00 00` is transmitted on A up
+- the Wii Menu visibly responds to the press
 
-- HID application registration succeeds.
-- Wii creates a Bluetooth connection.
-- At least one host report is received.
-- Wii accepts status/data reports.
-- A down/up is observable in the Wii Menu.
+If the bytes are correct but the Wii does not react, classify the failure as timing/HID transport rather than button mapping.
 
-### Failure classification
+## Gate 2 — complete core controls + Wii output path
 
-1. Android HID registration.
-2. Discoverability / inquiry.
-3. SDP or device identity.
-4. HID control/interrupt channel.
-5. Wii output-report handshake.
-6. WiiRemoteX input report encoding/timing.
+Validate down/up for:
 
-Do not tune IR or extensions until the failing layer is known.
+- D-pad
+- A / B
+- 1 / 2
+- + / -
+- HOME
 
-## Test B — Linux Bluetooth laboratory
+Also verify:
+
+- LED output reports update emulator state
+- report `0x10` rumble toggles phone vibration
+- status request `0x15` returns a valid battery byte
+- report-mode changes through `0x12` persist correctly
+
+## Gate 3 — accelerometer
+
+Validate in a title that exposes tilt/motion clearly.
+
+Acceptance criteria:
+
+- resting values are stable around calibration zero-g values
+- axis signs match physical movement
+- X/Y/Z ranges do not clip during ordinary movement
+- continuous report cadence remains stable while motion data changes
+
+Record any axis inversion or scale error before tuning calibration constants.
+
+## Gate 4 — IR
+
+Validate both manual virtual pointer and motion pointer.
+
+Acceptance criteria:
+
+- Wii performs the IR initialization sequence
+- Basic / Extended / Full payload modes are emitted when requested
+- cursor appears on screen
+- horizontal and vertical direction match phone movement
+- recenter returns the pointer to a predictable center
+- edge reach and jitter are acceptable
+
+Do not tune pointer smoothing until transport/report cadence is known to be stable.
+
+## Gate 5 — Nunchuk
+
+Use a compatible title and capture the full initialization exchange.
+
+Acceptance criteria:
+
+- attach emits status `0x20`
+- data reporting pauses until the host selects a new report mode
+- `A400F0=55` initialization is accepted
+- `A400FB=00` plaintext mode is accepted
+- joystick X/Y directions match
+- C and Z buttons match
+- Nunchuk accelerometer data is plausible
+
+## Gate 6 — MotionPlus
+
+Use a MotionPlus-compatible title.
+
+Acceptance criteria:
+
+- MotionPlus register initialization completes
+- activation mode is retained
+- gyro axes/signs match movement
+- slow/fast flags behave plausibly
+- Nunchuk pass-through works when enabled
+- no flag/high-bit corruption is visible in captures
+
+## Gate 7 — disconnect, reconnect and bond persistence
+
+Run each scenario at least three times:
+
+1. stop/start WiiRemoteX transport
+2. disable/re-enable phone Bluetooth
+3. power-cycle ESP32 bridge
+4. power-cycle Wii
+5. move Wii/bridge briefly out of range and return
+6. clear bond and pair again
+7. restart the mobile app without clearing bond
+
+Pass criteria:
+
+- no stale `CONNECTED` UI state
+- no manual process restart required for ordinary recovery
+- no permanently wedged BLE write queue
+- pairing can be retried after timeout/failure
+- persisted bonds reconnect where the selected route supports persistence
+
+## Failure classification
+
+Classify the earliest failing layer:
+
+1. Android/iOS permissions or radio availability
+2. BLE discovery / GATT setup
+3. ESP32 bridge protocol/version
+4. Wii inquiry / discoverability
+5. SDP or device identity
+6. authentication / legacy PIN / bond
+7. HID control/interrupt channel
+8. Wii output-report handshake
+9. WiiRemoteX input report encoding
+10. report timing/jitter
+11. sensor/IR/extension semantics
+
+Do not tune later layers while an earlier layer is failing.
+
+## Linux Bluetooth laboratory
 
 Use a Linux PC with BlueZ and a Bluetooth adapter that supports monitor capture.
 
@@ -58,26 +185,9 @@ power on
 scan on
 ```
 
-Start WiiRemoteX HID + discoverability on Android and allow Linux to discover/connect to the device.
+Capture WiiRemoteX and then an original RVL-CNT-01 under equivalent conditions.
 
-Capture:
-
-- inquiry/discovery
-- SDP attributes
-- HID descriptor
-- L2CAP control/interrupt traffic
-- report IDs and payloads
-- packet/report timing
-
-For a reference capture repeat the same experiment with an original RVL-CNT-01 Wii Remote:
-
-```bash
-sudo btmon -w wiimote-original.btsnoop
-```
-
-## Behavioural diff
-
-Compare the reference device and WiiRemoteX in this order:
+Compare in this order:
 
 | Layer | Original Wii Remote | WiiRemoteX | Result |
 |---|---|---|---|
@@ -92,3 +202,7 @@ Compare the reference device and WiiRemoteX in this order:
 | Cadence / jitter | measure | measure | pending |
 
 Keep raw captures out of source control if they contain Bluetooth addresses. Store a redacted summary in the compatibility matrix.
+
+## ESP32 HIL
+
+See `HIL.md` and `tools/hil/bridge_smoke.py` for the local BLE/ESP32 smoke gate.

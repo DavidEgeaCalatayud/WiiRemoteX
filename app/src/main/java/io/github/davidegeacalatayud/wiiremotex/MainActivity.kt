@@ -13,9 +13,13 @@ import androidx.activity.viewModels
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.github.davidegeacalatayud.wiiremotex.feature.controller.ControllerScreen
+import io.github.davidegeacalatayud.wiiremotex.platform.sensors.PointerTuning
 
 class MainActivity : ComponentActivity() {
     private val viewModel: WiiRemoteViewModel by viewModels()
@@ -46,6 +50,9 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             val state by viewModel.uiState.collectAsStateWithLifecycle()
+            var pointerSensitivity by remember {
+                mutableFloatStateOf(PointerTuning.get(this@MainActivity))
+            }
 
             MaterialTheme {
                 Surface {
@@ -60,6 +67,10 @@ class MainActivity : ComponentActivity() {
                             "${entry.timestamp} ${entry.direction}  ${entry.message}"
                         },
                         lastError = state.lastError,
+                        pointerSensitivity = pointerSensitivity,
+                        onPointerSensitivityChanged = { value ->
+                            pointerSensitivity = PointerTuning.set(this@MainActivity, value)
+                        },
                         onTransportChanged = { useBridge ->
                             viewModel.selectTransport(
                                 if (useBridge) TransportMode.ESP32_BRIDGE
@@ -81,7 +92,7 @@ class MainActivity : ComponentActivity() {
                         onStopWiiPairing = viewModel::stopWiiPairing,
                         onClearWiiBond = viewModel::clearWiiBond,
                         onShareDiagnostics = {
-                            shareDiagnostics(state)
+                            shareDiagnostics(state, pointerSensitivity)
                         },
                         onShareHardwareTrace = {
                             shareHardwareTrace(viewModel.exportHardwareTraceJson())
@@ -144,7 +155,10 @@ class MainActivity : ComponentActivity() {
         permissionLauncher.launch(missing.toTypedArray())
     }
 
-    private fun shareDiagnostics(state: WiiRemoteUiState) {
+    private fun shareDiagnostics(
+        state: WiiRemoteUiState,
+        pointerSensitivity: Float,
+    ) {
         val diagnostics = buildString {
             appendLine("WiiRemoteX diagnostics")
             appendLine("Device: ${android.os.Build.MANUFACTURER} ${android.os.Build.MODEL}")
@@ -156,6 +170,7 @@ class MainActivity : ComponentActivity() {
                 appendLine("Bridge protocol: ${state.bridgeProtocolVersion ?: "unknown"}")
                 appendLine("Bridge firmware: ${state.bridgeFirmwareVersion ?: "unknown"}")
             }
+            appendLine("Pointer sensitivity: ${pointerSensitivity}x")
             appendLine("Report mode: 0x${state.wiimote.reportMode.toString(16).uppercase().padStart(2, '0')}")
             appendLine("Data reporting enabled: ${state.wiimote.dataReportingEnabled}")
             appendLine("Continuous reporting: ${state.wiimote.continuousReporting}")
