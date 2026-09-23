@@ -52,6 +52,8 @@ fun ControllerScreen(
     wiimoteState: WiimoteState,
     diagnosticLines: List<String>,
     lastError: String?,
+    pointerSensitivity: Float,
+    onPointerSensitivityChanged: (Float) -> Unit,
     onTransportChanged: (Boolean) -> Unit,
     onStartHid: () -> Unit,
     onMakeDiscoverable: () -> Unit,
@@ -116,7 +118,11 @@ fun ControllerScreen(
             onClearWiiBond = onClearWiiBond,
         )
 
-        Text("Wii Remote", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+        Text(
+            "Wii Remote",
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.SemiBold,
+        )
 
         DPad(onButtonChanged)
 
@@ -148,6 +154,8 @@ fun ControllerScreen(
         IrPointerCard(
             enabled = wiimoteState.infrared.enabled,
             motionPointerEnabled = motionPointerEnabled,
+            pointerSensitivity = pointerSensitivity,
+            onPointerSensitivityChanged = onPointerSensitivityChanged,
             onEnabled = onIrEnabled,
             onPointer = onIrPointer,
             onMotionPointerEnabled = onMotionPointerEnabled,
@@ -221,6 +229,12 @@ private fun ConnectionCard(
                 )
             }
 
+            ConnectionAssistant(
+                connectionLabel = connectionLabel,
+                useEsp32Bridge = useEsp32Bridge,
+                bridgeReady = bridgeReady,
+            )
+
             if (useEsp32Bridge) {
                 Text(
                     text = buildString {
@@ -249,6 +263,10 @@ private fun ConnectionCard(
                     text = lastError,
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.error,
+                )
+                Text(
+                    text = recoveryHint(lastError, useEsp32Bridge),
+                    style = MaterialTheme.typography.bodySmall,
                 )
             }
 
@@ -295,13 +313,55 @@ private fun ConnectionCard(
 }
 
 @Composable
+private fun ConnectionAssistant(
+    connectionLabel: String,
+    useEsp32Bridge: Boolean,
+    bridgeReady: Boolean,
+) {
+    val connected = connectionLabel == "CONNECTED"
+    val transportReady = connectionLabel in setOf("REGISTERED", "CONNECTING", "CONNECTED")
+
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Text(
+            text = "Connection assistant",
+            style = MaterialTheme.typography.labelLarge,
+            fontWeight = FontWeight.SemiBold,
+        )
+        Text(
+            text = "✓ 1. Transport selected: ${if (useEsp32Bridge) "ESP32 Bridge" else "Direct HID"}",
+            style = MaterialTheme.typography.bodySmall,
+        )
+        Text(
+            text = if (useEsp32Bridge) {
+                "${if (bridgeReady) "✓" else "○"} 2. Connect ESP32 and wait for BRIDGE_READY"
+            } else {
+                "${if (transportReady) "✓" else "○"} 2. Start Android HID and make the phone visible"
+            },
+            style = MaterialTheme.typography.bodySmall,
+        )
+        Text(
+            text = if (useEsp32Bridge) {
+                "${if (connected) "✓" else "○"} 3. Pair Wii, then press the console red SYNC button"
+            } else {
+                "${if (connected) "✓" else "○"} 3. Sync the Wii while Android is discoverable"
+            },
+            style = MaterialTheme.typography.bodySmall,
+        )
+    }
+}
+
+@Composable
 private fun MotionCard(state: WiimoteState) {
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(
             modifier = Modifier.padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
-            Text("Motion sensors · live", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+            Text(
+                "Motion sensors · live",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
+            )
             Text(
                 text = "Accel  X ${state.motion.accelerationX} · Y ${state.motion.accelerationY} · Z ${state.motion.accelerationZ}",
                 fontFamily = FontFamily.Monospace,
@@ -322,6 +382,8 @@ private fun MotionCard(state: WiimoteState) {
 private fun IrPointerCard(
     enabled: Boolean,
     motionPointerEnabled: Boolean,
+    pointerSensitivity: Float,
+    onPointerSensitivityChanged: (Float) -> Unit,
     onEnabled: (Boolean) -> Unit,
     onPointer: (Float, Float) -> Unit,
     onMotionPointerEnabled: (Boolean) -> Unit,
@@ -365,12 +427,40 @@ private fun IrPointerCard(
                 )
             }
 
+            Text(
+                "Calibration wizard",
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = FontWeight.SemiBold,
+            )
+            Text(
+                "1. Hold the phone in a comfortable neutral pointing position, keep it still, then recenter.",
+                style = MaterialTheme.typography.bodySmall,
+            )
             Button(
                 onClick = onRecenterMotionPointer,
                 enabled = motionPointerEnabled,
             ) {
-                Text("Recenter pointer")
+                Text("Calibrate + recenter")
             }
+
+            Text(
+                text = "2. Pointer sensitivity · ${formatSensitivity(pointerSensitivity)}×",
+                style = MaterialTheme.typography.bodySmall,
+            )
+            Slider(
+                value = pointerSensitivity,
+                onValueChange = onPointerSensitivityChanged,
+                valueRange = 0.5f..2f,
+                steps = 5,
+            )
+            Text(
+                "Lower values require more phone movement; higher values reach the screen edges faster.",
+                style = MaterialTheme.typography.bodySmall,
+            )
+            Text(
+                "3. Test center and all four screen edges. Recenter whenever your neutral grip changes.",
+                style = MaterialTheme.typography.bodySmall,
+            )
 
             Surface(
                 modifier = Modifier
@@ -515,7 +605,11 @@ private fun DiagnosticsCard(
             modifier = Modifier.padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
-            Text("Diagnostics", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+            Text(
+                "Diagnostics",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
+            )
 
             if (lines.isEmpty()) {
                 Text("No Bluetooth events yet.", style = MaterialTheme.typography.bodySmall)
@@ -606,6 +700,23 @@ private fun HoldButton(
         }
     }
 }
+
+private fun recoveryHint(error: String, useEsp32Bridge: Boolean): String =
+    when {
+        error.contains("permission", ignoreCase = true) ->
+            "Open Android app permissions and allow the requested Bluetooth access, then retry."
+        error.contains("protocol", ignoreCase = true) ->
+            "App and ESP32 firmware use different bridge protocol versions. Flash the matching firmware release."
+        error.contains("scan", ignoreCase = true) || error.contains("ESP32", ignoreCase = true) ->
+            "Check that the ESP32 is powered, nearby and running WiiRemoteX firmware, then reconnect."
+        useEsp32Bridge ->
+            "Stop the bridge transport, power-cycle the ESP32 if needed, then reconnect and retry Wii pairing."
+        else ->
+            "Stop HID, start it again, make Android discoverable and retry Wii synchronization."
+    }
+
+private fun formatSensitivity(value: Float): String =
+    ((value * 100).toInt() / 100f).toString()
 
 private fun ledText(state: WiimoteState): String {
     val leds = listOf(
