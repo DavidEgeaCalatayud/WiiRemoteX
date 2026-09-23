@@ -25,7 +25,7 @@ class AndroidHidTransport(
         fun onSetReport(type: Int, reportId: Int, payload: ByteArray): Boolean = false
         fun onSetProtocol(protocol: Int) = Unit
         fun onVirtualCableUnplug(device: BluetoothDevice?) = Unit
-        fun onError(message: String, cause: Throwable? = null) = Unit
+        fun onError(message: String, cause: Throwable?) = Unit
 
         companion object {
             val NO_OP = object : Listener {}
@@ -160,7 +160,7 @@ class AndroidHidTransport(
 
         try {
             if (!hid.registerApp(sdp, null, null, executor, callback)) {
-                listener.onError("Android rejected the HID registration command")
+                listener.onError("Android rejected the HID registration command", null)
             }
         } catch (error: SecurityException) {
             listener.onError("BLUETOOTH_CONNECT permission is required", error)
