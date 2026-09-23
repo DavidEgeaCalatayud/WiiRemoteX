@@ -109,6 +109,20 @@ class IosWiimoteEngineTest {
         assertEquals(WiiConnectionState.CONNECTED, engine.wiiConnectionState)
     }
 
+    @Test
+    fun `pointer sensitivity is clamped to supported UX range`() {
+        val engine = IosWiimoteEngine()
+
+        engine.updatePointerSensitivity(3f)
+        assertEquals(2f, engine.currentPointerSensitivity)
+
+        engine.updatePointerSensitivity(0.1f)
+        assertEquals(0.5f, engine.currentPointerSensitivity)
+
+        engine.updatePointerSensitivity(1.25f)
+        assertEquals(1.25f, engine.currentPointerSensitivity)
+    }
+
     private fun reassemble(packets: List<ByteArray>): BridgeMessage {
         val reassembler = BridgeFrameReassembler()
         var result: BridgeMessage? = null
