@@ -93,6 +93,7 @@ class AndroidEsp32BleTransport(
     private var reconnectAttempts = 0
     private var timeoutRunnable: Runnable? = null
     private var reconnectRunnable: Runnable? = null
+    private var lastWrite: PendingWrite? = null
 
     val currentState: State
         get() = synchronized(lock) { state }
@@ -131,6 +132,11 @@ class AndroidEsp32BleTransport(
             status: Int,
             newState: Int,
         ) {
+            if (!isCurrentGatt(gatt)) {
+                closeStaleGatt(gatt)
+                return
+            }
+
             if (status != BluetoothGatt.GATT_SUCCESS) {
                 cancelTimeout()
                 recoverOrFail("ESP32 GATT connection failed with status $status")
@@ -170,6 +176,8 @@ class AndroidEsp32BleTransport(
         }
 
         override fun onServicesDiscovered(gatt: BluetoothGatt, status: Int) {
+            if (!isCurrentGatt(gatt)) return
+
             if (status != BluetoothGatt.GATT_SUCCESS) {
                 cancelTimeout()
                 recoverOrFail("BLE service discovery failed with status $status")
@@ -192,6 +200,7 @@ class AndroidEsp32BleTransport(
             gatt: BluetoothGatt,
             characteristic: BluetoothGattCharacteristic,
         ) {
+            if (!isCurrentGatt(gatt)) return
             if (characteristic.uuid == BRIDGE_TO_PHONE_UUID) {
                 characteristic.value?.let(::handlePacket)
             }
@@ -202,6 +211,7 @@ class AndroidEsp32BleTransport(
             characteristic: BluetoothGattCharacteristic,
             value: ByteArray,
         ) {
+            if (!isCurrentGatt(gatt)) return
             if (characteristic.uuid == BRIDGE_TO_PHONE_UUID) {
                 handlePacket(value)
             }
@@ -212,7 +222,7 @@ class AndroidEsp32BleTransport(
             descriptor: BluetoothGattDescriptor,
             status: Int,
         ) {
-            if (descriptor.uuid != CCC_UUID) return
+            if (!isCurrentGatt(gatt) || descriptor.uuid != CCC_UUID) return
 
             cancelTimeout()
             if (status != BluetoothGatt.GATT_SUCCESS) {
@@ -229,7 +239,7 @@ class AndroidEsp32BleTransport(
             characteristic: BluetoothGattCharacteristic,
             status: Int,
         ) {
-            if (characteristic.uuid != PHONE_TO_BRIDGE_UUID) return
+            if (!isCurrentGatt(gatt) || characteristic.uuid != PHONE_TO_BRIDGE_UUID) return
 
             var retry: PendingWrite? = null
             synchronized(lock) {
@@ -254,8 +264,6 @@ class AndroidEsp32BleTransport(
             drainWrites()
         }
     }
-
-    private var lastWrite: PendingWrite? = null
 
     fun start(): Boolean {
         if (currentState != State.IDLE && currentState != State.ERROR) {
@@ -690,6 +698,17 @@ class AndroidEsp32BleTransport(
             // The caller may have revoked Bluetooth permission while scanning.
         } finally {
             scannerActive = false
+        }
+    }
+
+    private fun isCurrentGatt(callbackGatt: BluetoothGatt): Boolean =
+        synchronized(lock) { gatt === callbackGatt }
+
+    private fun closeStaleGatt(staleGatt: BluetoothGatt) {
+        try {
+            staleGatt.close()
+        } catch (_: SecurityException) {
+            // No state transition is allowed from a callback belonging to an old link.
         }
     }
 
