@@ -8,11 +8,13 @@ import io.github.davidegeacalatayud.wiiremotex.core.trace.HardwareTraceEvent
 import io.github.davidegeacalatayud.wiiremotex.core.trace.traceExtensionState
 import io.github.davidegeacalatayud.wiiremotex.core.trace.traceInfraredState
 import io.github.davidegeacalatayud.wiiremotex.core.trace.traceMotionPlusState
+import java.util.UUID
 
 class HardwareTraceRecorder(
     private val maxEvents: Int = 8_000,
 ) {
     private val events = ArrayDeque<HardwareTraceEvent>()
+    private var sessionId: String = UUID.randomUUID().toString()
 
     @Synchronized
     fun record(
@@ -44,12 +46,17 @@ class HardwareTraceRecorder(
     }
 
     @Synchronized
-    fun clear() = events.clear()
+    fun clear() {
+        events.clear()
+        sessionId = UUID.randomUUID().toString()
+    }
 
     @Synchronized
     fun exportJson(): String = buildString {
         append("{\n")
         append("  \"schema\": \"${HARDWARE_TRACE_SCHEMA}\",\n")
+        append("  \"session_id\": \"${escape(sessionId)}\",\n")
+        append("  \"event_count\": ${events.size},\n")
         append("  \"device\": {")
         append("\"manufacturer\":\"${escape(Build.MANUFACTURER)}\",")
         append("\"model\":\"${escape(Build.MODEL)}\",")
@@ -60,6 +67,7 @@ class HardwareTraceRecorder(
         events.forEachIndexed { index, item ->
             val reportId = item.reportId
             append("    {")
+            append("\"sequence\":$index,")
             append("\"timestamp_ns\":${item.timestampNs},")
             append("\"elapsed_realtime_ns\":${item.elapsedRealtimeNs},")
             append("\"direction\":\"${escape(item.direction)}\",")
