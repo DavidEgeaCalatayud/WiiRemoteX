@@ -13,7 +13,7 @@ jobs:
   android:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Require Android signing secrets
         env:
@@ -60,7 +60,7 @@ jobs:
         run: gradle :app:assembleRelease
 
       - name: Verify APK signature
-        run: apksigner verify --verbose app/build/outputs/apk/release/app-release.apk
+        run: "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose app/build/outputs/apk/release/app-release.apk
 
       - name: Stage Android artifact
         run: |
@@ -76,7 +76,7 @@ jobs:
   esp32:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Build ESP32 bridge
         uses: espressif/esp-idf-ci-action@v1
@@ -105,7 +105,7 @@ jobs:
     needs: [android, esp32]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - uses: actions/download-artifact@v4
         with:
