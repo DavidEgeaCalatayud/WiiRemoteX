@@ -2,7 +2,7 @@
 
 **WiiRemoteX** is an experimental multiplatform Wii Remote emulation project. One Kotlin Multiplatform protocol/session core can drive a **real Nintendo Wii** through replaceable transports: Android can use Bluetooth HID directly or fall back to an ESP32 bridge, while iPhone uses that same ESP32 BLE bridge.
 
-> Status: **0.5.x hardware-validation + multiplatform foundation**. Android, the shared Kotlin core, iOS frontend and ESP32 bridge are developed independently around the same Wii protocol model.
+> Status: **physical Nintendo Wii connection achieved**. WiiRemoteX has successfully established a connection with real Wii hardware; protocol, gameplay, sensor, IR, extension and reconnect compatibility validation is still ongoing.
 
 ## Goal
 
@@ -52,7 +52,11 @@ The PoC wires controller and sensor events through the shared session engine int
 - protocol/session unit tests
 - structured diagnostics for physical-Wii validation
 
-The first hardware success criterion remains deliberately small: **press A on the phone and navigate the Wii Menu on a physical Wii**.
+### ✅ Physical Wii hardware milestone
+
+A real Nintendo Wii has now successfully established a connection with WiiRemoteX. This removes the project's first major hardware-connectivity uncertainty and confirms that the software stack can reach actual Wii hardware.
+
+The next hardware milestone is deliberately small and measurable: **press A on the phone, transmit report `0x30` with the expected button payload, and navigate the Wii Menu on the physical console**.
 
 ## Modules
 
@@ -116,6 +120,13 @@ Implemented in software:
 - Linux/BlueZ + `btmon` validation procedure
 - hardware compatibility matrix
 
+Hardware progress:
+
+- ✅ successful connection established with a physical Nintendo Wii
+- ⏳ validate core-button reports end-to-end on the Wii Menu
+- ⏳ validate Wii output-report handling against real hardware
+- ⏳ validate sustained report cadence, reconnect and bond persistence
+
 See `docs/hardware/HARDWARE_VALIDATION.md`, `docs/hardware/ANDROID_ESP32_FALLBACK.md` and `docs/hardware/COMPATIBILITY_MATRIX.md`.
 
 ### Wii protocol features
@@ -137,8 +148,8 @@ Implemented in software:
 
 Still hardware-gated:
 
-- proving direct Android HID against a physical Wii
-- proving Android/iPhone → ESP32 → Wii pairing and HID channels
+- full validation of direct Android HID behavior against a physical Wii
+- full validation of Android/iPhone → ESP32 → Wii HID/report behavior
 - validating sensor axis/sign calibration against real games
 - validating IR geometry against Wii cursor behavior
 - MotionPlus calibration/pass-through edge cases
