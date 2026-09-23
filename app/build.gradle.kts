@@ -26,6 +26,7 @@ dependencies {
     implementation(project(":core:protocol"))
     implementation(project(":platform:bluetooth"))
     implementation(project(":platform:sensors"))
+    implementation(project(":transports:esp32-ble"))
     implementation(project(":feature:controller"))
 
     val composeBom = platform("androidx.compose:compose-bom:2026.04.01")

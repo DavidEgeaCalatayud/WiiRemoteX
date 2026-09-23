@@ -23,6 +23,7 @@ class HardwareTraceRecorder(
     private val maxEvents: Int = 8_000,
 ) {
     private val events = ArrayDeque<HardwareTraceEvent>()
+    private var activeTransport = DIRECT_HID_TRANSPORT
 
     @Synchronized
     fun record(
@@ -32,14 +33,17 @@ class HardwareTraceRecorder(
         state: WiimoteState,
         reportId: Int? = null,
         payload: ByteArray = byteArrayOf(),
-        transport: String = "android-bluetooth-hid-device",
+        transport: String? = null,
     ) {
+        updateActiveTransport(event)
+        val resolvedTransport = transport ?: activeTransport
+
         events.addLast(
             HardwareTraceEvent(
                 timestampNs = System.currentTimeMillis() * 1_000_000L,
                 elapsedRealtimeNs = SystemClock.elapsedRealtimeNanos(),
                 direction = direction,
-                transport = transport,
+                transport = resolvedTransport,
                 event = event,
                 reportId = reportId,
                 payload = payload.copyOf(),
@@ -104,6 +108,20 @@ class HardwareTraceRecorder(
         append("}\n")
     }
 
+    private fun updateActiveTransport(event: String) {
+        when {
+            event.contains("Transport selected: ESP32_BRIDGE") ||
+                event.contains("Starting Android → ESP32 BLE fallback transport") -> {
+                activeTransport = ESP32_BRIDGE_TRANSPORT
+            }
+
+            event.contains("Transport selected: DIRECT_HID") ||
+                event.contains("Starting direct Android Bluetooth HID transport") -> {
+                activeTransport = DIRECT_HID_TRANSPORT
+            }
+        }
+    }
+
     private fun ByteArray.toHex(): String =
         joinToString(" ") { byte ->
             (byte.toInt() and 0xFF).toString(16).uppercase().padStart(2, '0')
@@ -116,4 +134,9 @@ class HardwareTraceRecorder(
             .replace("\n", "\\n")
             .replace("\r", "\\r")
             .replace("\t", "\\t")
+
+    private companion object {
+        const val DIRECT_HID_TRANSPORT = "android-bluetooth-hid-device"
+        const val ESP32_BRIDGE_TRANSPORT = "android-ble-esp32-classic-hid"
+    }
 }

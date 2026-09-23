@@ -1,0 +1,33 @@
+name: WiiRemoteXiOS
+
+options:
+  bundleIdPrefix: io.github.davidegeacalatayud
+  deploymentTarget:
+    iOS: "17.0"
+
+targets:
+  WiiRemoteXiOS:
+    type: application
+    platform: iOS
+    sources:
+      - Sources
+    info:
+      path: Sources/Info.plist
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: io.github.davidegeacalatayud.wiiremotex.ios
+        PRODUCT_NAME: WiiRemoteX
+        SWIFT_VERSION: "5.9"
+        TARGETED_DEVICE_FAMILY: "1,2"
+        FRAMEWORK_SEARCH_PATHS: "$(inherited) $(SRCROOT)/../shared/build/xcode-frameworks/$(CONFIGURATION)/$(SDK_NAME)"
+        OTHER_LDFLAGS: "$(inherited) -framework WiiRemoteShared"
+    preBuildScripts:
+      - name: Compile Kotlin shared framework
+        script: |
+          if [ "YES" = "$OVERRIDE_KOTLIN_BUILD_IDE_SUPPORTED" ]; then
+            echo "Skipping Gradle framework build because the IDE already built it"
+            exit 0
+          fi
+          cd "$SRCROOT/.."
+          gradle :shared:embedAndSignAppleFrameworkForXcode
+        basedOnDependencyAnalysis: false

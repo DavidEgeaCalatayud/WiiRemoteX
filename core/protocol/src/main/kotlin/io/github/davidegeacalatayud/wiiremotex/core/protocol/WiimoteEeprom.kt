@@ -1,6 +1,10 @@
 package io.github.davidegeacalatayud.wiiremotex.core.protocol
 
+import kotlinx.atomicfu.locks.SynchronizedObject
+import kotlinx.atomicfu.locks.synchronized
+
 class WiimoteEeprom {
+    private val lock = SynchronizedObject()
     private val memory = ByteArray(SIZE)
 
     init {
@@ -8,11 +12,10 @@ class WiimoteEeprom {
         DEFAULT_TRAILER.copyInto(memory, destinationOffset = 0x16D0)
     }
 
-    @Synchronized
     fun read(
         address: Int,
         size: Int,
-    ): ByteArray? {
+    ): ByteArray? = synchronized(lock) {
         val offset = address and 0xFFFF
         if (offset !in 0 until SIZE) return null
         if (size <= 0) return byteArrayOf()
@@ -21,11 +24,10 @@ class WiimoteEeprom {
         return memory.copyOfRange(offset, end)
     }
 
-    @Synchronized
     fun write(
         address: Int,
         data: ByteArray,
-    ): Boolean {
+    ): Boolean = synchronized(lock) {
         val offset = address and 0xFFFF
         if (offset !in 0 until SIZE) return false
         if (offset + data.size > SIZE) return false

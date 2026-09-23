@@ -16,6 +16,8 @@ import io.github.davidegeacalatayud.wiiremotex.core.protocol.StatusReportEncoder
 import io.github.davidegeacalatayud.wiiremotex.core.protocol.WiimoteEeprom
 import io.github.davidegeacalatayud.wiiremotex.core.protocol.WiimoteRegisterBank
 import io.github.davidegeacalatayud.wiiremotex.core.protocol.WiimoteDataReportEncoder
+import kotlinx.atomicfu.locks.SynchronizedObject
+import kotlinx.atomicfu.locks.synchronized
 import kotlin.math.abs
 
 sealed interface WiimoteEffect {
@@ -36,14 +38,14 @@ class WiimoteSessionEngine(
     private val eeprom: WiimoteEeprom = WiimoteEeprom(),
     private val decoder: HostCommandDecoder = HostCommandDecoder(),
 ) {
+    private val lock = SynchronizedObject()
     private var nextInterleavedReportId: Int = 0x3E
     private var nextPassThroughNunchukSample: Boolean = false
 
     var state: WiimoteState = initialState
         private set
 
-    @Synchronized
-    fun setButton(button: WiiButton, pressed: Boolean): SessionResult {
+    fun setButton(button: WiiButton, pressed: Boolean): SessionResult = synchronized(lock) {
         val buttons = state.pressedButtons.toMutableSet().apply {
             if (pressed) add(button) else remove(button)
         }
@@ -51,8 +53,7 @@ class WiimoteSessionEngine(
         return withCurrentDataReportIf(!state.continuousReporting)
     }
 
-    @Synchronized
-    fun setMotion(motion: MotionState): SessionResult {
+    fun setMotion(motion: MotionState): SessionResult = synchronized(lock) {
         state = state.copy(
             motion = motion,
             motionPlus = state.motionPlus.copy(
@@ -75,7 +76,6 @@ class WiimoteSessionEngine(
         )
     }
 
-    @Synchronized
     fun setInfrared(
         enabled: Boolean = state.infrared.enabled,
         points: List<InfraredPoint> = state.infrared.points,
@@ -83,7 +83,7 @@ class WiimoteSessionEngine(
         logicEnabled: Boolean = state.infrared.logicEnabled,
         configured: Boolean = state.infrared.configured,
         mode: InfraredMode = state.infrared.mode,
-    ): SessionResult {
+    ): SessionResult = synchronized(lock) {
         state = state.copy(
             infrared = state.infrared.copy(
                 enabled = enabled,
@@ -99,8 +99,7 @@ class WiimoteSessionEngine(
         )
     }
 
-    @Synchronized
-    fun setNunchuk(nunchuk: NunchukState): SessionResult {
+    fun setNunchuk(nunchuk: NunchukState): SessionResult = synchronized(lock) {
         val connectionChanged = nunchuk.connected != state.nunchuk.connected
         val normalized = if (nunchuk.connected) {
             nunchuk
@@ -140,8 +139,7 @@ class WiimoteSessionEngine(
         )
     }
 
-    @Synchronized
-    fun setMotionPlus(motionPlus: MotionPlusState): SessionResult {
+    fun setMotionPlus(motionPlus: MotionPlusState): SessionResult = synchronized(lock) {
         if (!motionPlus.present && state.motionPlus.present) {
             registerBank.resetMotionPlus()
         }
@@ -165,14 +163,12 @@ class WiimoteSessionEngine(
         )
     }
 
-    @Synchronized
-    fun setBatteryLevel(level: Int): WiimoteState {
+    fun setBatteryLevel(level: Int): WiimoteState = synchronized(lock) {
         state = state.copy(batteryLevel = level.coerceIn(0, 0xFF))
         return state
     }
 
-    @Synchronized
-    fun onHostReport(reportId: Int, payload: ByteArray): SessionResult {
+    fun onHostReport(reportId: Int, payload: ByteArray): SessionResult = synchronized(lock) {
         val effects = when (val command = decoder.decode(reportId, payload)) {
             is HostCommand.SetRumble -> {
                 state = state.copy(rumbleEnabled = command.enabled)
@@ -421,8 +417,7 @@ class WiimoteSessionEngine(
         return SessionResult(state = state, effects = effects)
     }
 
-    @Synchronized
-    fun nextContinuousReport(): SessionResult =
+    fun nextContinuousReport(): SessionResult = synchronized(lock) {
         if (state.dataReportingEnabled && state.continuousReporting) {
             SessionResult(
                 state = state,
@@ -433,6 +428,7 @@ class WiimoteSessionEngine(
         } else {
             SessionResult(state = state)
         }
+    }
 
     private fun withCurrentDataReport(): SessionResult =
         SessionResult(
