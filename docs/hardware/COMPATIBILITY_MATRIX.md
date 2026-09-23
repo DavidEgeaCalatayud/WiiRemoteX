@@ -49,6 +49,8 @@ Record these in order so a later failure does not obscure an earlier transport p
 13. Power-cycle reconnect succeeds.
 14. Bond persistence succeeds after phone/ESP32/Wii restart where the route supports it.
 
+For the ESP32 route, `tools/hil/bridge_smoke.py report-smoke` can automate the transport half of gate 4 and `reconnect --cycles N` can automate the BLE half of gate 12. The visible Wii Menu reaction and Wii-side persistence still require physical observation.
+
 ## Per-test evidence
 
 For each run retain:
@@ -64,7 +66,22 @@ For each run retain:
 - result at each Bluetooth/HID gate
 - exported `wiiremotex-hardware-trace-v1` JSON filename
 - HIL harness output when ESP32 is used
+- HIL evidence JSON (`--evidence artifacts/HW-###-*.json`)
+- optional normalized reference comparison from `tools/trace/trace_replay.py`
 - optional redacted `btmon` capture filename
 - notes on latency, jitter, axis/sign issues, disconnects and reconnect behaviour
+
+A recommended evidence directory for one run is:
+
+```text
+artifacts/HW-002/
+├── hil-report-smoke.json
+├── hil-reconnect.json
+├── android-hardware-trace.json
+├── trace-replay.txt
+└── notes.md
+```
+
+A compatibility row must not infer `PASS` from implementation status or CI alone. CI proves software regression coverage; this ledger records observed hardware behaviour.
 
 Raw radio captures containing Bluetooth addresses should not be committed without redaction.
