@@ -52,7 +52,7 @@ The ESP32 is intentionally a transport bridge rather than a second Wii Remote im
 - ✅ Kotlin Multiplatform shared tests run in CI
 - ✅ iOS framework and simulator app build in CI
 - ✅ ESP32 firmware builds in CI
-- ✅ the local ESP32 HIL harness is syntax-validated in CI
+- ✅ the local ESP32 HIL and protocol-replay tools are compiled and unit-tested in CI
 
 The exact model/route metadata from the first successful Wii connection was not retained, so it is recorded conservatively as `HW-001` in the compatibility ledger and must be completed during the next physical test session.
 
@@ -70,7 +70,7 @@ See [`docs/hardware/HARDWARE_VALIDATION.md`](docs/hardware/HARDWARE_VALIDATION.m
 
 ## Protocol validation
 
-The core now contains reference conversation tests that exercise a complete host/session flow instead of isolated encoders only:
+The core contains reference conversation tests that exercise a complete host/session flow instead of isolated encoders only:
 
 ```text
 Wii -> 0x15 status request
@@ -100,6 +100,29 @@ The BLE bridge protocol also has deterministic property-style robustness coverag
 - oversized packets/messages
 - protocol-version validation
 
+### Hardware trace replay
+
+`tools/trace/trace_replay.py` turns exported hardware traces into repeatable regression evidence.
+
+Validate a capture and require the minimum Wii handshake:
+
+```bash
+python tools/trace/trace_replay.py validate capture.json --require-handshake
+```
+
+Compare a WiiRemoteX run against a known-good reference conversation:
+
+```bash
+python tools/trace/trace_replay.py compare \
+  reference-original-wiimote.json \
+  wiiremotex-rvl001.json \
+  --collapse-continuous
+```
+
+Use `--payload-mode exact` for byte-for-byte deterministic scenarios. Comparison deliberately ignores wall-clock timing by default and focuses on report direction, identity, ordering and optionally payload. Exported Android traces carry a session UUID, event count and per-event sequence so incomplete or reordered evidence can be detected.
+
+See [`docs/hardware/TRACE_REPLAY.md`](docs/hardware/TRACE_REPLAY.md) and [`docs/hardware/TRACE_SCHEMA.md`](docs/hardware/TRACE_SCHEMA.md).
+
 ## Hardware-in-the-loop
 
 `tools/hil/bridge_smoke.py` provides a local BLE smoke harness for an ESP32 connected to real hardware.
@@ -112,6 +135,8 @@ pip install -r tools/hil/requirements.txt
 python tools/hil/bridge_smoke.py scan
 python tools/hil/bridge_smoke.py probe
 python tools/hil/bridge_smoke.py pair
+python tools/hil/bridge_smoke.py report-smoke --repeat 3
+python tools/hil/bridge_smoke.py reconnect --cycles 10
 ```
 
 The pairing gate expects:
@@ -122,7 +147,24 @@ WII_CONNECTION CONNECTING
 WII_CONNECTION CONNECTED
 ```
 
-GitHub-hosted runners cannot access the developer's Bluetooth radio, ESP32 or Wii, so physical HIL remains a local acceptance gate. CI validates that the harness itself remains syntactically valid.
+`report-smoke` sends the exact bridge-side A-button sequence:
+
+```text
+0x30 00 00
+0x30 00 08
+0x30 00 00
+```
+
+This proves transport delivery but does **not** mark physical Gate 1 PASS by itself; the Wii Menu must visibly react.
+
+Any HIL command can persist machine-readable evidence without Bluetooth addresses:
+
+```bash
+python tools/hil/bridge_smoke.py report-smoke \
+  --evidence artifacts/HW-002/hil-report-smoke.json
+```
+
+GitHub-hosted runners cannot access the developer's Bluetooth radio, ESP32 or Wii, so physical HIL remains a local acceptance gate. CI installs the harness dependencies and unit-tests framing, reassembly, bounded state, duplicate conflicts and evidence handling.
 
 See [`docs/hardware/HIL.md`](docs/hardware/HIL.md).
 
@@ -182,6 +224,7 @@ Current bridge properties:
 - explicit scan/connect/discovery/indication timeouts
 - bounded Android BLE reconnect attempts
 - stale-GATT callback rejection during recovery
+- Android visible-activity recovery after Bluetooth is toggled back on
 - ESP32 → phone confirmed indication queue
 - Wii-side Bluetooth Classic HID identity/pairing implementation
 
@@ -191,11 +234,11 @@ The 0.7 line adds product-facing controls on top of the engineering diagnostics:
 
 - connection assistant for Direct HID / ESP32 routes
 - explicit bridge protocol + firmware status
-- human-readable recovery hints
+- human-readable recovery hints and explicit Retry state
 - Motion Pointer calibration/recenter flow
 - persistent pointer sensitivity (`0.5×–2.0×`)
 - iOS responsive portrait/landscape layout
-- Android scroll-safe controller layout
+- Android single-column phone layout plus adaptive two-column wide/landscape layout
 - diagnostics and structured trace sharing
 
 The UI is still considered pre-1.0 and will continue to be refined after the physical protocol gates are complete.
@@ -222,6 +265,7 @@ shared/          Swift-facing KMP facade
 iosApp/          native SwiftUI + CoreMotion + CoreBluetooth frontend
 firmware/esp32/  BLE ↔ Bluetooth Classic HID bridge
 tools/hil/       local hardware smoke harness
+tools/trace/     trace validation/reference replay
 docs/            architecture, research, validation and release procedures
 ```
 
@@ -234,13 +278,13 @@ GitHub Actions validate four independent areas:
 - **Android CI** — core/session tests + debug APK
 - **Multiplatform CI** — shared JVM tests + iOS Kotlin/Native framework + simulator app
 - **ESP32 CI** — native ESP-IDF firmware build + flashable artifacts
-- **Quality** — Detekt, Android Lint and HIL harness validation as blocking checks; ktlint, SwiftLint and clang-format currently report pre-existing style debt while the repository is normalized incrementally
+- **Quality** — Detekt and Android Lint plus blocking Python tests for the HIL/replay tooling; ktlint, SwiftLint and clang-format currently report pre-existing style debt while the repository is normalized incrementally
 
 Style debt is deliberately visible rather than hidden, but it is not allowed to block functional/hardware hardening until a dedicated repository-wide formatting pass is performed.
 
 ## Release engineering
 
-The Android app is versioned as the `0.7.0-alpha` line. A tag-driven release workflow can build:
+The Android app is versioned as the `0.7.1-alpha` line. A tag-driven release workflow can build:
 
 ```text
 WiiRemoteX-vX.Y.Z/
