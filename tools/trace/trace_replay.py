@@ -65,14 +65,32 @@ def validate_trace(trace: dict) -> None:
     schema = trace.get("schema")
     if not isinstance(schema, str) or not schema.startswith(TRACE_SCHEMA_PREFIX):
         raise ValueError(f"unsupported trace schema: {schema!r}")
+
+    session_id = trace.get("session_id")
+    if session_id is not None and (not isinstance(session_id, str) or not session_id.strip()):
+        raise ValueError("session_id must be a non-empty string when present")
+
     events = trace.get("events")
     if not isinstance(events, list):
         raise ValueError("trace events must be an array")
+
+    event_count = trace.get("event_count")
+    if event_count is not None and event_count != len(events):
+        raise ValueError(
+            f"event_count mismatch: declared={event_count!r} actual={len(events)}"
+        )
 
     previous_elapsed: int | None = None
     for index, event in enumerate(events):
         if not isinstance(event, dict):
             raise ValueError(f"events[{index}] must be an object")
+
+        sequence = event.get("sequence")
+        if sequence is not None and sequence != index:
+            raise ValueError(
+                f"events[{index}].sequence mismatch: expected={index} actual={sequence!r}"
+            )
+
         direction = event.get("direction")
         if not isinstance(direction, str) or not direction:
             raise ValueError(f"events[{index}].direction must be a non-empty string")
