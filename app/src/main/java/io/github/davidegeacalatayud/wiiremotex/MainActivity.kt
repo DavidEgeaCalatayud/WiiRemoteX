@@ -2,7 +2,10 @@ package io.github.davidegeacalatayud.wiiremotex
 
 import android.Manifest
 import android.bluetooth.BluetoothAdapter
+import android.content.BroadcastReceiver
+import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
@@ -25,6 +28,27 @@ class MainActivity : ComponentActivity() {
     private val viewModel: WiiRemoteViewModel by viewModels()
 
     private var afterPermissionGranted: (() -> Unit)? = null
+    private var bluetoothReceiverRegistered = false
+
+    private val bluetoothStateReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            if (intent?.action != BluetoothAdapter.ACTION_STATE_CHANGED) return
+            val adapterState = intent.getIntExtra(
+                BluetoothAdapter.EXTRA_STATE,
+                BluetoothAdapter.ERROR,
+            )
+            if (adapterState != BluetoothAdapter.STATE_ON) return
+
+            val state = viewModel.uiState.value
+            if (
+                state.transportMode == TransportMode.ESP32_BRIDGE &&
+                state.hidStage == HidStage.ERROR &&
+                hasBluetoothPermissions(TransportMode.ESP32_BRIDGE)
+            ) {
+                viewModel.startHid()
+            }
+        }
+    }
 
     private val permissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions(),
@@ -115,34 +139,39 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    override fun onStart() {
+        super.onStart()
+        registerBluetoothStateReceiver()
+    }
+
+    override fun onStop() {
+        unregisterBluetoothStateReceiver()
+        super.onStop()
+    }
+
+    private fun registerBluetoothStateReceiver() {
+        if (bluetoothReceiverRegistered) return
+        val filter = IntentFilter(BluetoothAdapter.ACTION_STATE_CHANGED)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            registerReceiver(bluetoothStateReceiver, filter, RECEIVER_NOT_EXPORTED)
+        } else {
+            @Suppress("DEPRECATION")
+            registerReceiver(bluetoothStateReceiver, filter)
+        }
+        bluetoothReceiverRegistered = true
+    }
+
+    private fun unregisterBluetoothStateReceiver() {
+        if (!bluetoothReceiverRegistered) return
+        unregisterReceiver(bluetoothStateReceiver)
+        bluetoothReceiverRegistered = false
+    }
+
     private fun withBluetoothPermissions(
         mode: TransportMode,
         action: () -> Unit,
     ) {
-        val required = when {
-            Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
-                mode == TransportMode.ESP32_BRIDGE -> {
-                arrayOf(
-                    Manifest.permission.BLUETOOTH_CONNECT,
-                    Manifest.permission.BLUETOOTH_SCAN,
-                )
-            }
-
-            Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> {
-                arrayOf(
-                    Manifest.permission.BLUETOOTH_CONNECT,
-                    Manifest.permission.BLUETOOTH_ADVERTISE,
-                )
-            }
-
-            mode == TransportMode.ESP32_BRIDGE -> {
-                arrayOf(Manifest.permission.ACCESS_FINE_LOCATION)
-            }
-
-            else -> emptyArray()
-        }
-
-        val missing = required.filter { permission ->
+        val missing = requiredBluetoothPermissions(mode).filter { permission ->
             ContextCompat.checkSelfPermission(this, permission) != PackageManager.PERMISSION_GRANTED
         }
 
@@ -153,6 +182,34 @@ class MainActivity : ComponentActivity() {
 
         afterPermissionGranted = action
         permissionLauncher.launch(missing.toTypedArray())
+    }
+
+    private fun hasBluetoothPermissions(mode: TransportMode): Boolean =
+        requiredBluetoothPermissions(mode).all { permission ->
+            ContextCompat.checkSelfPermission(this, permission) == PackageManager.PERMISSION_GRANTED
+        }
+
+    private fun requiredBluetoothPermissions(mode: TransportMode): Array<String> = when {
+        Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
+            mode == TransportMode.ESP32_BRIDGE -> {
+            arrayOf(
+                Manifest.permission.BLUETOOTH_CONNECT,
+                Manifest.permission.BLUETOOTH_SCAN,
+            )
+        }
+
+        Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> {
+            arrayOf(
+                Manifest.permission.BLUETOOTH_CONNECT,
+                Manifest.permission.BLUETOOTH_ADVERTISE,
+            )
+        }
+
+        mode == TransportMode.ESP32_BRIDGE -> {
+            arrayOf(Manifest.permission.ACCESS_FINE_LOCATION)
+        }
+
+        else -> emptyArray()
     }
 
     private fun shareDiagnostics(

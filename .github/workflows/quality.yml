@@ -42,7 +42,7 @@ jobs:
         continue-on-error: true
         run: gradle ktlintCheck
 
-  hil-harness:
+  protocol-tools:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -52,8 +52,19 @@ jobs:
         with:
           python-version: "3.13"
 
-      - name: Compile HIL harness
-        run: python -m py_compile tools/hil/bridge_smoke.py
+      - name: Install HIL dependencies
+        run: python -m pip install -r tools/hil/requirements.txt
+
+      - name: Compile HIL and trace tooling
+        run: |
+          python -m py_compile tools/hil/bridge_smoke.py
+          python -m py_compile tools/trace/trace_replay.py
+
+      - name: Test HIL harness
+        run: python -m unittest discover -s tools/hil -p 'test_*.py' -v
+
+      - name: Test trace replay tooling
+        run: python -m unittest discover -s tools/trace -p 'test_*.py' -v
 
   swift-style-report:
     runs-on: macos-latest
