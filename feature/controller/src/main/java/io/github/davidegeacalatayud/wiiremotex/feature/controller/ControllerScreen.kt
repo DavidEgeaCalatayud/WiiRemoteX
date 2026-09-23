@@ -6,6 +6,7 @@ import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.waitForUpOrCancellation
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -76,111 +77,187 @@ fun ControllerScreen(
     onMotionPointerEnabled: (Boolean) -> Unit,
     onRecenterMotionPointer: () -> Unit,
 ) {
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .verticalScroll(rememberScrollState())
-            .padding(20.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(18.dp),
-    ) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Text(
-                text = "WiiRemoteX",
-                style = MaterialTheme.typography.headlineMedium,
-                fontWeight = FontWeight.Bold,
-            )
-            Text(
-                text =
-                    if (useEsp32Bridge) {
-                        "Android → BLE → ESP32 → Wii"
-                    } else {
-                        "Android → Wii · Bluetooth HID"
-                    },
-                style = MaterialTheme.typography.bodyMedium,
-            )
+    BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+        val wideLayout = maxWidth >= WIDE_LAYOUT_MIN_WIDTH
+
+        if (wideLayout) {
+            Row(
+                modifier = Modifier.fillMaxSize().padding(20.dp),
+                horizontalArrangement = Arrangement.spacedBy(18.dp),
+            ) {
+                Column(
+                    modifier = Modifier
+                        .weight(0.9f)
+                        .verticalScroll(rememberScrollState()),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(18.dp),
+                ) {
+                    ControllerHeader(useEsp32Bridge)
+                    ConnectionCard(
+                        connectionLabel = connectionLabel,
+                        useEsp32Bridge = useEsp32Bridge,
+                        bridgeReady = bridgeReady,
+                        bridgeProtocolVersion = bridgeProtocolVersion,
+                        bridgeFirmwareVersion = bridgeFirmwareVersion,
+                        wiimoteState = wiimoteState,
+                        lastError = lastError,
+                        onTransportChanged = onTransportChanged,
+                        onStartHid = onStartHid,
+                        onMakeDiscoverable = onMakeDiscoverable,
+                        onStopHid = onStopHid,
+                        onStartWiiPairing = onStartWiiPairing,
+                        onStopWiiPairing = onStopWiiPairing,
+                        onClearWiiBond = onClearWiiBond,
+                    )
+                    RemoteControls(onButtonChanged)
+                }
+
+                Column(
+                    modifier = Modifier
+                        .weight(1.1f)
+                        .verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(18.dp),
+                ) {
+                    MotionCard(wiimoteState)
+                    IrPointerCard(
+                        enabled = wiimoteState.infrared.enabled,
+                        motionPointerEnabled = motionPointerEnabled,
+                        pointerSensitivity = pointerSensitivity,
+                        onPointerSensitivityChanged = onPointerSensitivityChanged,
+                        onEnabled = onIrEnabled,
+                        onPointer = onIrPointer,
+                        onMotionPointerEnabled = onMotionPointerEnabled,
+                        onRecenterMotionPointer = onRecenterMotionPointer,
+                    )
+                    NunchukCard(
+                        state = wiimoteState,
+                        onEnabled = onNunchukEnabled,
+                        onStick = onNunchukStick,
+                        onC = onNunchukC,
+                        onZ = onNunchukZ,
+                    )
+                    MotionPlusCard(
+                        state = wiimoteState,
+                        onEnabled = onMotionPlusEnabled,
+                    )
+                    DiagnosticsCard(
+                        lines = diagnosticLines,
+                        onShareDiagnostics = onShareDiagnostics,
+                        onShareHardwareTrace = onShareHardwareTrace,
+                        onClearHardwareTrace = onClearHardwareTrace,
+                    )
+                }
+            }
+        } else {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .verticalScroll(rememberScrollState())
+                    .padding(20.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(18.dp),
+            ) {
+                ControllerHeader(useEsp32Bridge)
+                ConnectionCard(
+                    connectionLabel = connectionLabel,
+                    useEsp32Bridge = useEsp32Bridge,
+                    bridgeReady = bridgeReady,
+                    bridgeProtocolVersion = bridgeProtocolVersion,
+                    bridgeFirmwareVersion = bridgeFirmwareVersion,
+                    wiimoteState = wiimoteState,
+                    lastError = lastError,
+                    onTransportChanged = onTransportChanged,
+                    onStartHid = onStartHid,
+                    onMakeDiscoverable = onMakeDiscoverable,
+                    onStopHid = onStopHid,
+                    onStartWiiPairing = onStartWiiPairing,
+                    onStopWiiPairing = onStopWiiPairing,
+                    onClearWiiBond = onClearWiiBond,
+                )
+                RemoteControls(onButtonChanged)
+                MotionCard(wiimoteState)
+                IrPointerCard(
+                    enabled = wiimoteState.infrared.enabled,
+                    motionPointerEnabled = motionPointerEnabled,
+                    pointerSensitivity = pointerSensitivity,
+                    onPointerSensitivityChanged = onPointerSensitivityChanged,
+                    onEnabled = onIrEnabled,
+                    onPointer = onIrPointer,
+                    onMotionPointerEnabled = onMotionPointerEnabled,
+                    onRecenterMotionPointer = onRecenterMotionPointer,
+                )
+                NunchukCard(
+                    state = wiimoteState,
+                    onEnabled = onNunchukEnabled,
+                    onStick = onNunchukStick,
+                    onC = onNunchukC,
+                    onZ = onNunchukZ,
+                )
+                MotionPlusCard(
+                    state = wiimoteState,
+                    onEnabled = onMotionPlusEnabled,
+                )
+                DiagnosticsCard(
+                    lines = diagnosticLines,
+                    onShareDiagnostics = onShareDiagnostics,
+                    onShareHardwareTrace = onShareHardwareTrace,
+                    onClearHardwareTrace = onClearHardwareTrace,
+                )
+            }
         }
+    }
+}
 
-        ConnectionCard(
-            connectionLabel = connectionLabel,
-            useEsp32Bridge = useEsp32Bridge,
-            bridgeReady = bridgeReady,
-            bridgeProtocolVersion = bridgeProtocolVersion,
-            bridgeFirmwareVersion = bridgeFirmwareVersion,
-            wiimoteState = wiimoteState,
-            lastError = lastError,
-            onTransportChanged = onTransportChanged,
-            onStartHid = onStartHid,
-            onMakeDiscoverable = onMakeDiscoverable,
-            onStopHid = onStopHid,
-            onStartWiiPairing = onStartWiiPairing,
-            onStopWiiPairing = onStopWiiPairing,
-            onClearWiiBond = onClearWiiBond,
-        )
-
+@Composable
+private fun ControllerHeader(useEsp32Bridge: Boolean) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
         Text(
-            "Wii Remote",
-            style = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.SemiBold,
+            text = "WiiRemoteX",
+            style = MaterialTheme.typography.headlineMedium,
+            fontWeight = FontWeight.Bold,
         )
-
-        DPad(onButtonChanged)
-
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceEvenly,
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            RemoteButton("B", WiiButton.B, onButtonChanged, 62)
-            RemoteButton("A", WiiButton.A, onButtonChanged, 78)
-        }
-
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(18.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            RemoteButton("−", WiiButton.MINUS, onButtonChanged, 48)
-            RemoteButton("HOME", WiiButton.HOME, onButtonChanged, 64)
-            RemoteButton("+", WiiButton.PLUS, onButtonChanged, 48)
-        }
-
-        Row(horizontalArrangement = Arrangement.spacedBy(24.dp)) {
-            RemoteButton("1", WiiButton.ONE, onButtonChanged, 54)
-            RemoteButton("2", WiiButton.TWO, onButtonChanged, 54)
-        }
-
-        MotionCard(wiimoteState)
-
-        IrPointerCard(
-            enabled = wiimoteState.infrared.enabled,
-            motionPointerEnabled = motionPointerEnabled,
-            pointerSensitivity = pointerSensitivity,
-            onPointerSensitivityChanged = onPointerSensitivityChanged,
-            onEnabled = onIrEnabled,
-            onPointer = onIrPointer,
-            onMotionPointerEnabled = onMotionPointerEnabled,
-            onRecenterMotionPointer = onRecenterMotionPointer,
+        Text(
+            text = if (useEsp32Bridge) {
+                "Android → BLE → ESP32 → Wii"
+            } else {
+                "Android → Wii · Bluetooth HID"
+            },
+            style = MaterialTheme.typography.bodyMedium,
         )
+    }
+}
 
-        NunchukCard(
-            state = wiimoteState,
-            onEnabled = onNunchukEnabled,
-            onStick = onNunchukStick,
-            onC = onNunchukC,
-            onZ = onNunchukZ,
-        )
+@Composable
+private fun RemoteControls(onButtonChanged: (WiiButton, Boolean) -> Unit) {
+    Text(
+        "Wii Remote",
+        style = MaterialTheme.typography.titleMedium,
+        fontWeight = FontWeight.SemiBold,
+    )
 
-        MotionPlusCard(
-            state = wiimoteState,
-            onEnabled = onMotionPlusEnabled,
-        )
+    DPad(onButtonChanged)
 
-        DiagnosticsCard(
-            lines = diagnosticLines,
-            onShareDiagnostics = onShareDiagnostics,
-            onShareHardwareTrace = onShareHardwareTrace,
-            onClearHardwareTrace = onClearHardwareTrace,
-        )
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceEvenly,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        RemoteButton("B", WiiButton.B, onButtonChanged, 62)
+        RemoteButton("A", WiiButton.A, onButtonChanged, 78)
+    }
+
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(18.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        RemoteButton("−", WiiButton.MINUS, onButtonChanged, 48)
+        RemoteButton("HOME", WiiButton.HOME, onButtonChanged, 64)
+        RemoteButton("+", WiiButton.PLUS, onButtonChanged, 48)
+    }
+
+    Row(horizontalArrangement = Arrangement.spacedBy(24.dp)) {
+        RemoteButton("1", WiiButton.ONE, onButtonChanged, 54)
+        RemoteButton("2", WiiButton.TWO, onButtonChanged, 54)
     }
 }
 
@@ -275,7 +352,15 @@ private fun ConnectionCard(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 Button(onClick = onStartHid) {
-                    Text(if (useEsp32Bridge) "Connect bridge" else "Start HID")
+                    Text(
+                        if (lastError != null) {
+                            "Retry"
+                        } else if (useEsp32Bridge) {
+                            "Connect bridge"
+                        } else {
+                            "Start HID"
+                        },
+                    )
                 }
                 if (!useEsp32Bridge) {
                     Button(onClick = onMakeDiscoverable) { Text("Visible") }
@@ -733,3 +818,5 @@ private fun ledText(state: WiimoteState): String {
 
 private fun batteryPercent(state: WiimoteState): Int =
     ((state.batteryLevel.coerceIn(0, 0xFF) / 255.0) * 100.0).toInt()
+
+private val WIDE_LAYOUT_MIN_WIDTH = 840.dp
