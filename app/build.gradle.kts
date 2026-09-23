@@ -22,8 +22,8 @@ android {
         applicationId = "io.github.davidegeacalatayud.wiiremotex"
         minSdk = 28
         targetSdk = 36
-        versionCode = 7
-        versionName = "0.7.0-alpha"
+        versionCode = 8
+        versionName = "0.7.1-alpha"
     }
 
     signingConfigs {
