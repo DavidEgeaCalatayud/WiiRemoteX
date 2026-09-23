@@ -3,6 +3,17 @@ plugins {
     id("org.jetbrains.kotlin.plugin.compose")
 }
 
+val releaseKeystorePath = System.getenv("WIIREMOTEX_KEYSTORE_PATH")
+val releaseKeystorePassword = System.getenv("WIIREMOTEX_KEYSTORE_PASSWORD")
+val releaseKeyAlias = System.getenv("WIIREMOTEX_KEY_ALIAS")
+val releaseKeyPassword = System.getenv("WIIREMOTEX_KEY_PASSWORD")
+val hasReleaseSigning = listOf(
+    releaseKeystorePath,
+    releaseKeystorePassword,
+    releaseKeyAlias,
+    releaseKeyPassword,
+).all { !it.isNullOrBlank() }
+
 android {
     namespace = "io.github.davidegeacalatayud.wiiremotex"
     compileSdk = 36
@@ -11,8 +22,28 @@ android {
         applicationId = "io.github.davidegeacalatayud.wiiremotex"
         minSdk = 28
         targetSdk = 36
-        versionCode = 6
-        versionName = "0.5.0-alpha"
+        versionCode = 7
+        versionName = "0.7.0-alpha"
+    }
+
+    signingConfigs {
+        if (hasReleaseSigning) {
+            create("release") {
+                storeFile = file(requireNotNull(releaseKeystorePath))
+                storePassword = releaseKeystorePassword
+                keyAlias = releaseKeyAlias
+                keyPassword = releaseKeyPassword
+            }
+        }
+    }
+
+    buildTypes {
+        getByName("release") {
+            isMinifyEnabled = false
+            if (hasReleaseSigning) {
+                signingConfig = signingConfigs.getByName("release")
+            }
+        }
     }
 
     buildFeatures {
