@@ -2,6 +2,8 @@
 
 **WiiRemoteX** is an experimental multiplatform Wii Remote emulation project. One Kotlin Multiplatform protocol/session core can drive a **real Nintendo Wii** through replaceable transports: Android can use Bluetooth HID directly or fall back to an ESP32 bridge, while iPhone uses that same ESP32 BLE bridge.
 
+> ✅ **Hardware milestone reached: WiiRemoteX has successfully connected to a real Nintendo Wii.**
+
 > Status: **physical Nintendo Wii connection achieved**. WiiRemoteX has successfully established a connection with real Wii hardware; protocol, gameplay, sensor, IR, extension and reconnect compatibility validation is still ongoing.
 
 ## Goal
