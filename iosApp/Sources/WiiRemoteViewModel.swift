@@ -20,6 +20,7 @@ final class WiiRemoteViewModel: ObservableObject {
     @Published var motionPlusEnabled = false
     @Published var nunchukX: Double = 0
     @Published var nunchukY: Double = 0
+    @Published private(set) var pointerSensitivity: Double = 1.0
 
     private let engine = IosWiimoteEngine()
     private let bridge = BLEBridgeTransport()
@@ -126,6 +127,13 @@ final class WiiRemoteViewModel: ObservableObject {
             )
         )
         refreshSharedState()
+    }
+
+    func setPointerSensitivity(_ value: Double) {
+        let clamped = min(max(value, 0.5), 2.0)
+        pointerSensitivity = clamped
+        engine.updatePointerSensitivity(sensitivity: Float(clamped))
+        UserDefaults.standard.set(clamped, forKey: CalibrationKey.pointerSensitivity)
     }
 
     func recenterMotionPointer() {
@@ -302,15 +310,20 @@ final class WiiRemoteViewModel: ObservableObject {
 
     private func restoreCalibration() {
         let defaults = UserDefaults.standard
-        guard defaults.object(forKey: CalibrationKey.gyroBiasX) != nil else {
-            return
+        if defaults.object(forKey: CalibrationKey.gyroBiasX) != nil {
+            engine.updateGyroBias(
+                xRadPerSec: Float(defaults.double(forKey: CalibrationKey.gyroBiasX)),
+                yRadPerSec: Float(defaults.double(forKey: CalibrationKey.gyroBiasY)),
+                zRadPerSec: Float(defaults.double(forKey: CalibrationKey.gyroBiasZ))
+            )
         }
 
-        engine.updateGyroBias(
-            xRadPerSec: Float(defaults.double(forKey: CalibrationKey.gyroBiasX)),
-            yRadPerSec: Float(defaults.double(forKey: CalibrationKey.gyroBiasY)),
-            zRadPerSec: Float(defaults.double(forKey: CalibrationKey.gyroBiasZ))
-        )
+        let storedSensitivity =
+            defaults.object(forKey: CalibrationKey.pointerSensitivity) != nil
+                ? defaults.double(forKey: CalibrationKey.pointerSensitivity)
+                : 1.0
+        pointerSensitivity = min(max(storedSensitivity, 0.5), 2.0)
+        engine.updatePointerSensitivity(sensitivity: Float(pointerSensitivity))
     }
 
     private func persistGyroBias(_ sample: MotionSample) {
@@ -360,6 +373,7 @@ final class WiiRemoteViewModel: ObservableObject {
         static let gyroBiasX = "wiiremotex.gyro_bias_x_rad_s"
         static let gyroBiasY = "wiiremotex.gyro_bias_y_rad_s"
         static let gyroBiasZ = "wiiremotex.gyro_bias_z_rad_s"
+        static let pointerSensitivity = "wiiremotex.pointer_sensitivity"
     }
 
     private static func label(for state: BLEBridgeTransport.State) -> String {
