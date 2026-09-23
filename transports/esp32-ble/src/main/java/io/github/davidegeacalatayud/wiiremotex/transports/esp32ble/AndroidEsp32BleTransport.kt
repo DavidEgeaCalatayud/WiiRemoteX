@@ -1,6 +1,7 @@
 package io.github.davidegeacalatayud.wiiremotex.transports.esp32ble
 
 import android.annotation.SuppressLint
+import android.bluetooth.BluetoothDevice
 import android.bluetooth.BluetoothGatt
 import android.bluetooth.BluetoothGattCallback
 import android.bluetooth.BluetoothGattCharacteristic
@@ -86,7 +87,12 @@ class AndroidEsp32BleTransport(
             adapter.bluetoothLeScanner?.stopScan(this)
             setState(State.CONNECTING)
             gatt = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                result.device.connectGatt(appContext, false, gattCallback, BluetoothGatt.TRANSPORT_LE)
+                result.device.connectGatt(
+                    appContext,
+                    false,
+                    gattCallback,
+                    BluetoothDevice.TRANSPORT_LE,
+                )
             } else {
                 @Suppress("DEPRECATION")
                 result.device.connectGatt(appContext, false, gattCallback)
