@@ -1,3 +1,5 @@
+import io.gitlab.arturbosch.detekt.extensions.DetektExtension
+
 plugins {
     id("com.android.application") version "9.4.0" apply false
     id("com.android.library") version "9.4.0" apply false
@@ -11,4 +13,9 @@ plugins {
 subprojects {
     apply(plugin = "org.jlleitschuh.gradle.ktlint")
     apply(plugin = "io.gitlab.arturbosch.detekt")
+
+    extensions.configure<DetektExtension> {
+        buildUponDefaultConfig = true
+        config.setFrom(rootProject.files("config/detekt/detekt.yml"))
+    }
 }
