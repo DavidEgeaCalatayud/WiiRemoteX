@@ -2,9 +2,11 @@
 
 **WiiRemoteX** is an experimental multiplatform Wii Remote emulation system built around one Kotlin Multiplatform protocol/session core. Android can talk to a physical Nintendo Wii directly through Bluetooth HID or through an ESP32 bridge; iPhone uses the same ESP32 BLE → Bluetooth Classic HID bridge.
 
-> ✅ **Verified hardware milestone:** WiiRemoteX has successfully established a connection with a real Nintendo Wii.
+> ✅ **Project status: feature-complete alpha / maintenance mode.** Active feature development is paused. WiiRemoteX has successfully established a connection with a real Nintendo Wii, and the remaining work is primarily physical-hardware validation and compatibility refinement rather than core architecture.
 >
-> 🧪 **Current gate:** prove the complete `A down → report 0x30 00 08 → Wii Menu response` round trip, then validate the remaining controls, sensors, extensions, reconnect and bond persistence on physical hardware.
+> 🧪 **Deferred validation:** prove the complete `A down → report 0x30 00 08 → Wii Menu response` round trip, then validate the remaining controls, sensors, extensions, reconnect and bond persistence on physical hardware.
+>
+> 📌 See [`PROJECT_STATUS.md`](PROJECT_STATUS.md) for the closure/maintenance policy and optional future scope.
 
 ## Architecture
 
@@ -54,9 +56,11 @@ The ESP32 is intentionally a transport bridge rather than a second Wii Remote im
 - ✅ ESP32 firmware builds in CI
 - ✅ the local ESP32 HIL and protocol-replay tools are compiled and unit-tested in CI
 
-The exact model/route metadata from the first successful Wii connection was not retained, so it is recorded conservatively as `HW-001` in the compatibility ledger and must be completed during the next physical test session.
+The exact model/route metadata from the first successful Wii connection was not retained, so it is recorded conservatively as `HW-001` in the compatibility ledger.
 
-### Next physical gates
+### Deferred physical gates
+
+These are intentionally deferred while the project remains in maintenance mode:
 
 1. **Core A-button:** `0x15 → 0x20 → 0x12 → 0x30 00 08`, with visible Wii Menu response.
 2. **Core controls/output path:** D-pad, A/B, 1/2, +/−, HOME, LEDs, rumble, battery and report-mode changes.
@@ -66,7 +70,7 @@ The exact model/route metadata from the first successful Wii connection was not 
 6. **MotionPlus:** initialization, gyro axes/flags and Nunchuk pass-through.
 7. **Recovery:** disconnect/reconnect, Bluetooth toggle, ESP32/Wii power-cycle and bond persistence.
 
-See [`docs/hardware/HARDWARE_VALIDATION.md`](docs/hardware/HARDWARE_VALIDATION.md) and [`docs/hardware/COMPATIBILITY_MATRIX.md`](docs/hardware/COMPATIBILITY_MATRIX.md).
+See [`docs/hardware/HARDWARE_VALIDATION.md`](docs/hardware/HARDWARE_VALIDATION.md), [`docs/hardware/COMPATIBILITY_MATRIX.md`](docs/hardware/COMPATIBILITY_MATRIX.md), and [`PROJECT_STATUS.md`](PROJECT_STATUS.md).
 
 ## Protocol validation
 
@@ -188,6 +192,14 @@ Implemented in software:
 
 Physical compatibility for the feature set is intentionally tracked separately from software implementation status.
 
+## Optional future scope: Wii Sports Resort / accessories
+
+If this project is reopened for feature work, the preferred target is a **game-driven compatibility pass** rather than another architectural rewrite.
+
+For Wii Sports Resort, the key bottom-mounted accessory on an original Wii Remote is **Wii MotionPlus**. WiiRemoteX already includes MotionPlus emulation foundations, so the next useful work would be validating activation, yaw/roll/pitch, slow/fast flags and Nunchuk pass-through against real gameplay.
+
+If the intended lower controller is the **Nunchuk**, WiiRemoteX also already contains a virtual Nunchuk implementation; future work should start from physical-game validation before adding more protocol code.
+
 ## ESP32 bridge
 
 Android and iOS use the same versioned BLE bridge protocol:
@@ -241,7 +253,7 @@ The 0.7 line adds product-facing controls on top of the engineering diagnostics:
 - Android single-column phone layout plus adaptive two-column wide/landscape layout
 - diagnostics and structured trace sharing
 
-The UI is still considered pre-1.0 and will continue to be refined after the physical protocol gates are complete.
+The UI is considered sufficient for the current feature-complete alpha milestone. Additional polish is deferred unless the project is reopened toward a real `1.0` release.
 
 ## Modules
 
@@ -280,7 +292,7 @@ GitHub Actions validate four independent areas:
 - **ESP32 CI** — native ESP-IDF firmware build + flashable artifacts
 - **Quality** — Detekt and Android Lint plus blocking Python tests for the HIL/replay tooling; ktlint, SwiftLint and clang-format currently report pre-existing style debt while the repository is normalized incrementally
 
-Style debt is deliberately visible rather than hidden, but it is not allowed to block functional/hardware hardening until a dedicated repository-wide formatting pass is performed.
+Style debt remains visible and can be addressed opportunistically during maintenance, but it is no longer an active feature-development objective.
 
 ## Release engineering
 
@@ -325,10 +337,21 @@ gradle :core:protocol:jvmTest \
 0.4.x  Protocol fidelity and extension hardening
 0.5.x  Hardware instrumentation + replaceable transports
 0.6.x  ESP32/iOS bridge foundation + KMP cleanup
-0.7.x  Physical validation, reconnect hardening, HIL, release + UX
-0.8.x  Compatibility fixes driven by real games/hardware + distribution polish
-1.0    Polished, evidence-backed multiplatform product
+0.7.x  Feature-complete alpha milestone; project enters maintenance mode
+0.8.x  Optional Wii Sports Resort / accessory compatibility pass if reopened
+1.0    Optional future polished, evidence-backed release
 ```
+
+## Maintenance mode
+
+Active feature development is paused. Acceptable maintenance work includes:
+
+- dependency/security/build fixes
+- documentation corrections
+- hardware-derived compatibility fixes
+- compatibility-matrix updates from real tests
+
+Major architectural rewrites and speculative protocol work are intentionally out of scope unless the project is explicitly reopened.
 
 ## Legal
 
